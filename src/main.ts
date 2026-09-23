@@ -30,6 +30,20 @@ export default class SheikoPlugin extends Plugin {
 			},
 		});
 		this.addCommand({
+			id: 'write-lifecycle-summary',
+			name: 'Write lifecycle summary to this task',
+			checkCallback: (checking) => {
+				const file = this.activeTask();
+				if (!file) return false;
+				if (!checking) {
+					void this.tracker.writeSummary(file).then((ok) => {
+						if (ok) new Notice('Sheiko: summary written.');
+					});
+				}
+				return true;
+			},
+		});
+		this.addCommand({
 			id: 'list-unwitnessed-closes',
 			name: 'List tasks closed while Obsidian was shut',
 			callback: () => new UnwitnessedModal(this.app, this).open(),

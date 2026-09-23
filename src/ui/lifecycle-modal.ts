@@ -1,4 +1,4 @@
-import { App, Modal, Setting, TFile } from 'obsidian';
+import { App, Modal, Notice, Setting, TFile } from 'obsidian';
 import type SheikoPlugin from '../main';
 import {
 	CONTEXT_HEADING,
@@ -94,6 +94,14 @@ export class LifecycleModal extends Modal {
 				: undefined,
 		);
 		row('Recorded by', fm[FIELD.source] === 'sheiko' ? 'Sheiko (seen live)' : fm[cfg.field.completedDate] ? 'Someone else, or by hand' : undefined);
+
+		new Setting(contentEl)
+			.setDesc('Writes Closure + Time per status into the note as a Lifecycle Summary section (refreshed, not duplicated).')
+			.addButton((b) =>
+				b.setButtonText('Write summary to note').onClick(async () => {
+					if (await this.plugin.tracker.writeSummary(this.file)) new Notice('Sheiko: summary written.');
+				}),
+			);
 
 		// ---- Time per status ----
 		contentEl.createEl('h4', { text: 'Time per status' });

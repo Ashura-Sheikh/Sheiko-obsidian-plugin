@@ -14,8 +14,12 @@ import type SheikoPlugin from './main';
 import {
 	CONTEXT_HEADING,
 	HISTORY_HEADING,
+	SUMMARY_HEADING,
 	Transition,
 	appendToSection,
+	buildSummary,
+	parseHistory,
+	replaceSection,
 	formatTransition,
 	isDateOnly,
 	localDateString,
@@ -24,7 +28,7 @@ import {
 	splitBuckets,
 	toLocalIso,
 } from './lifecycle';
-import { TaskNotesConfig, isCompletedStatus, isTaskFile, statusOf } from './tasknotes';
+import { TaskNotesConfig, isCompletedStatus, isTaskFile, labelFor, statusOf } from './tasknotes';
 import { vaultBasePath } from './settings';
 
 export const FIELD = {
@@ -200,8 +204,10 @@ export class Tracker {
 			if (t.kind !== 'live' || t.from === null) continue;
 			const was = isCompletedStatus(this.cfg, t.from);
 			const now = isCompletedStatus(this.cfg, t.to);
-			if (!was && now) await this.applyClosure(file, t.at);
-			else if (was && !now) await this.applyReopen(file);
+			if (!was && now) {
+				const after = await this.applyClosure(file, t.at);
+				await this.writeSummary(file, after);
+			} else if (was && !now) await this.applyReopen(file);
 		}
 	}
 
@@ -218,7 +224,9 @@ export class Tracker {
 		);
 	}
 
-	private async applyClosure(file: TFile, at: Date): Promise<void> {
+	/** Returns the frontmatter as written, so the summary doesn't depend on the (async) metadata cache. */
+	private async applyClosure(file: TFile, at: Date): Promise<FM> {
+		let after: FM = {};
 		const f = this.cfg.field;
 		const identity = this.plugin.settings.identity;
 		const week = this.plugin.settings.week;
@@ -248,7 +256,9 @@ export class Tracker {
 				wrote = true;
 			}
 			if (wrote) fm[FIELD.source] = 'sheiko';
+			after = { ...fm };
 		});
+		return after;
 	}
 
 	private async applyReopen(file: TFile): Promise<void> {
@@ -278,6 +288,48 @@ export class Tracker {
 			return;
 		}
 		await this.plugin.app.fileManager.processFrontMatter(file, fn);
+	}
+
+	/**
+	 * Writes (or refreshes) the `## Lifecycle Summary` section: Closure + Time per status.
+	 * For a completed task with a full-ISO completedDate the numbers stop at the close;
+	 * otherwise they run to now.
+	 */
+	async writeSummary(file: TFile, fmOverride?: FM): Promise<boolean> {
+		if (!this.writesAllowed()) {
+			new Notice('Sheiko: writes are not allowed in this vault (see Sheiko settings → Safety).');
+			return false;
+		}
+		const { app } = this.plugin;
+		const f = this.cfg.field;
+		const fm: FM = fmOverride ?? app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+		const writtenAt = new Date();
+		const status = typeof fm[f.status] === 'string' ? (fm[f.status] as string) : null;
+		const closedAt = isCompletedStatus(this.cfg, status) ? parseTimestamp(fm[f.completedDate]) : null;
+		const body = await app.vault.read(file);
+		const lines = buildSummary({
+			history: parseHistory(body),
+			end: closedAt ?? writtenAt,
+			writtenAt,
+			schedule: this.plugin.settings.week,
+			label: (s) => labelFor(this.cfg, s),
+			closure: {
+				created: fm[f.dateCreated],
+				completed: fm[f.completedDate],
+				closedBy: fm[FIELD.closedBy],
+				timeToClose: fm[FIELD.timeToClose],
+				working: fm[FIELD.working],
+				overnight: fm[FIELD.overnight],
+				weekend: fm[FIELD.weekend],
+				seenLive: fm[FIELD.source] === 'sheiko',
+			},
+		});
+		if (this.plugin.settings.dryRun) {
+			console.debug(`[Sheiko dry run] ${file.path}: write ${SUMMARY_HEADING}`, lines);
+			return false;
+		}
+		await app.vault.process(file, (c) => replaceSection(c, SUMMARY_HEADING, lines));
+		return true;
 	}
 
 	/** Context entries (append-only). */

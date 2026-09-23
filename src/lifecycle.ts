@@ -277,6 +277,112 @@ export function formatMinutes(total: number): string {
 	return [d ? `${d}d` : '', h ? `${h}h` : '', m ? `${m}m` : ''].filter(Boolean).join(' ');
 }
 
+// ---------- Lifecycle Summary (written into the note) ----------
+
+export const SUMMARY_HEADING = '## Lifecycle Summary';
+
+/**
+ * Replaces the body of `heading` with `bodyLines` (creating the section at the end
+ * if missing). Only ever used for the Summary, which is a derived snapshot;
+ * Context and Status History stay append-only.
+ */
+export function replaceSection(content: string, heading: string, bodyLines: string[]): string {
+	const lines = content.split('\n');
+	const start = lines.findIndex((l) => l.trim() === heading);
+	const block = [heading, '', ...bodyLines, ''];
+	if (start === -1) {
+		return `${content.replace(/\s+$/, '')}\n\n${block.join('\n')}`;
+	}
+	let end = lines.length;
+	for (let i = start + 1; i < lines.length; i++) {
+		if (/^##\s/.test(lines[i] ?? '')) {
+			end = i;
+			break;
+		}
+	}
+	lines.splice(start, end - start, ...block);
+	return lines.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+export interface SummaryInput {
+	history: Transition[];
+	/** Snapshot time. For a closed task: the close time, so the numbers stop there. */
+	end: Date;
+	writtenAt: Date;
+	schedule: WeekSchedule;
+	label: (status: string) => string;
+	closure: {
+		created: unknown;
+		completed: unknown;
+		closedBy: unknown;
+		timeToClose: unknown;
+		working: unknown;
+		overnight: unknown;
+		weekend: unknown;
+		seenLive: boolean;
+	};
+}
+
+const cell = (v: unknown): string => {
+	if (v === undefined || v === null || v === '') return '—';
+	const s = typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? String(v) : JSON.stringify(v);
+	return s.replace(/\|/g, '\\|');
+};
+
+export function buildSummary(inp: SummaryInput): string[] {
+	const c = inp.closure;
+	const out: string[] = [
+		`*Snapshot as of ${toLocalIso(inp.writtenAt)}, written by Sheiko. Refreshed each time the task closes; Status History is the full record.*`,
+		'',
+		'**Closure**',
+		'',
+		'| Field | Value |',
+		'|---|---|',
+		`| Created | ${cell(c.created)} |`,
+		`| Completed | ${cell(c.completed)} |`,
+		`| Closed by | ${cell(c.closedBy)} |`,
+	];
+	if (typeof c.timeToClose === 'number') {
+		out.push(
+			`| Time to close | ${formatMinutes(c.timeToClose)} (${c.timeToClose} min) |`,
+			`| – working | ${formatMinutes(Number(c.working ?? 0))} |`,
+			`| – overnight | ${formatMinutes(Number(c.overnight ?? 0))} |`,
+			`| – weekend | ${formatMinutes(Number(c.weekend ?? 0))} |`,
+		);
+	} else {
+		out.push('| Time to close | — |');
+	}
+	out.push(
+		`| Recorded by | ${c.seenLive ? 'Sheiko (seen live)' : c.completed ? 'Someone else, or by hand' : '—'} |`,
+		'',
+		'**Time per status**',
+		'',
+	);
+	if (inp.history.length === 0) {
+		out.push('No status changes recorded yet.');
+		return out;
+	}
+	const rep = computeDurations(inp.history, inp.end, inp.schedule);
+	out.push('| Status | Total | Working | Overnight | Weekend |', '|---|---|---|---|---|');
+	for (const s of rep.perStatus) {
+		// Hide only the status the task is in at the snapshot (e.g. Done at close = 0m).
+		// A real earlier stage stays visible even if it rounds to 0m.
+		if (s.minutes <= 0 && s.status === rep.current) continue;
+		out.push(
+			`| ${cell(inp.label(s.status))} | ${formatMinutes(s.minutes)} | ${formatMinutes(s.buckets.working)} | ` +
+				`${formatMinutes(s.buckets.overnight)} | ${formatMinutes(s.buckets.weekend)} |`,
+		);
+	}
+	if (rep.gapMinutes > 0) {
+		out.push(`| Gap (changed while Obsidian was closed) | ${formatMinutes(rep.gapMinutes)} | — | — | — |`);
+	}
+	const first = inp.history[0];
+	if (first && first.kind !== 'created') {
+		out.push('', '*Time before the first recorded change isn’t counted.*');
+	}
+	return out;
+}
+
 export const DEFAULT_WEEK: WeekSchedule = [
 	{ start: '09:00', end: '17:00' }, // Sun (weekend bucket; end = roll cutoff)
 	{ start: '09:00', end: '17:00' }, // Mon
