@@ -9,3 +9,21 @@ If your plugin does not need CSS, delete this file.
 body {
     color:rgb(72, 22, 22)
 }
+
+/* ---- Sheiko: task lifecycle window ---- */
+.sheiko-modal .sheiko-muted { color: var(--text-muted); }
+.sheiko-modal .sheiko-context { padding-left: 1.2em; }
+.sheiko-modal .sheiko-context li { margin-bottom: 0.3em; }
+.sheiko-modal .sheiko-context-input { width: 100%; }
+.sheiko-modal .sheiko-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25em 1em;
+}
+.sheiko-modal .sheiko-table { width: 100%; border-collapse: collapse; }
+.sheiko-modal .sheiko-table th,
+.sheiko-modal .sheiko-table td {
+    text-align: left;
+    padding: 0.25em 0.5em;
+    border-bottom: 1px solid var(--background-modifier-border);
+}

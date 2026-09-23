@@ -1,11 +1,9 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
+	"id": "sheiko-dev",
+	"name": "Sheiko (dev)",
 	"version": "1.0.0",
-	"minAppVersion": "1.0.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
-	"isDesktopOnly": false
+	"minAppVersion": "1.4.4",
+	"description": "Task lifecycle tracking alongside TaskNotes: context log, status history, closure and time per status.",
+	"author": "Sheikh M Sahil",
+	"isDesktopOnly": true
 }
