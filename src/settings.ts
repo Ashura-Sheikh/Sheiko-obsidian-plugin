@@ -13,6 +13,19 @@ export interface SheikoSettings {
 	dryRun: boolean;
 	/** Cap on files edited by one batch run (startup reconcile, and auto-roll later). */
 	maxEditsPerRun: number;
+	// ---- Phase 2 ----
+	/** TaskNotes status values Sheiko moves tasks to / prompts on. */
+	progressStatus: string;
+	reviewStatus: string;
+	doneStatus: string;
+	/** Timer started → move to progressStatus (only from an earlier status). */
+	autoStageTimer: boolean;
+	/** All checkboxes ticked → move to reviewStatus. */
+	autoStageChecklist: boolean;
+	/** Prompt for sign-off when a task enters reviewStatus. */
+	promptOnReview: boolean;
+	/** Prompt at the daily cutoff for everything still in reviewStatus. */
+	promptAtCutoff: boolean;
 }
 
 export const DEFAULT_SETTINGS: SheikoSettings = {
@@ -21,6 +34,13 @@ export const DEFAULT_SETTINGS: SheikoSettings = {
 	allowedVaults: [],
 	dryRun: false,
 	maxEditsPerRun: 25,
+	progressStatus: 'in-progress',
+	reviewStatus: 'in-review',
+	doneStatus: 'done',
+	autoStageTimer: true,
+	autoStageChecklist: true,
+	promptOnReview: true,
+	promptAtCutoff: true,
 };
 
 export interface PluginData {
@@ -29,6 +49,8 @@ export interface PluginData {
 	lastStatus: Record<string, string>;
 	/** Closes found at startup that Sheiko didn't see happen (decision 2a): flagged, never filled in. */
 	unwitnessedCloses: { path: string; detectedAt: string }[];
+	/** ISO time of the last daily cutoff Sheiko acted on (sign-off prompt now, auto-roll in Phase 3). */
+	lastCutoffRun: string | null;
 }
 
 export function vaultBasePath(app: App): string | null {
@@ -109,6 +131,41 @@ export class SheikoSettingTab extends PluginSettingTab {
 					}
 				}),
 			);
+
+		// ---- Stages & sign-off (Phase 2) ----
+		new Setting(containerEl).setName('Stages and sign-off').setHeading();
+		const statuses = this.plugin.taskNotes.statuses;
+		const pick = (name: string, desc: string, key: 'progressStatus' | 'reviewStatus' | 'doneStatus', onlyCompleted: boolean): void => {
+			new Setting(containerEl)
+				.setName(name)
+				.setDesc(desc)
+				.addDropdown((d) => {
+					for (const st of statuses) if (st.isCompleted === onlyCompleted) d.addOption(st.value, st.label);
+					if (!statuses.some((st) => st.value === s[key])) d.addOption(s[key], `${s[key]} (not in TaskNotes)`);
+					d.setValue(s[key]).onChange(async (v) => {
+						s[key] = v;
+						await this.plugin.saveSettings();
+					});
+				});
+		};
+		pick('Working status', 'Where a task moves when its timer starts.', 'progressStatus', false);
+		pick('Review status', 'Where a task moves when every checkbox is ticked. Tasks here wait for sign-off.', 'reviewStatus', false);
+		pick('Done status', 'What "Approve and close" in the sign-off prompt sets.', 'doneStatus', true);
+		const toggle = (name: string, desc: string, key: 'autoStageTimer' | 'autoStageChecklist' | 'promptOnReview' | 'promptAtCutoff'): void => {
+			new Setting(containerEl)
+				.setName(name)
+				.setDesc(desc)
+				.addToggle((t) =>
+					t.setValue(s[key]).onChange(async (v) => {
+						s[key] = v;
+						await this.plugin.saveSettings();
+					}),
+				);
+		};
+		toggle('Timer start moves task to working', 'Only moves it forward, from a status before the working status.', 'autoStageTimer');
+		toggle('All boxes ticked moves task to review', 'Fires when the last unticked box is ticked, not on tasks that were already fully ticked.', 'autoStageChecklist');
+		toggle('Prompt for sign-off on review', 'Ask to approve and close as soon as a task enters review.', 'promptOnReview');
+		toggle('Prompt for sign-off at the daily cutoff', 'At each day\'s end time, ask about every task still waiting in review.', 'promptAtCutoff');
 
 		// ---- Working hours ----
 		new Setting(containerEl).setName('Working hours').setHeading();

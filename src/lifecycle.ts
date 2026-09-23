@@ -24,6 +24,8 @@ export interface Transition {
 	from: string | null;
 	to: string;
 	kind: TransitionKind;
+	/** Optional reason for a live change, e.g. "auto: timer started". */
+	note?: string;
 }
 
 export const HISTORY_HEADING = '## Status History';
@@ -72,7 +74,8 @@ export function formatTransition(t: Transition): string {
 	const ts = toLocalIso(t.at);
 	if (t.kind === 'created') return `- ${ts} — created → ${t.to}`;
 	const base = `- ${ts} — ${t.from ?? '?'} → ${t.to}`;
-	return t.kind === 'detected' ? `${base} ${DETECTED_SUFFIX}` : base;
+	if (t.kind === 'detected') return `${base} ${DETECTED_SUFFIX}`;
+	return t.note ? `${base} (${t.note})` : base;
 }
 
 const LINE_RE = /^- (\d{4}-\d{2}-\d{2}T[^\s]+) — (\S+) → (\S+)(.*)$/;
@@ -86,7 +89,9 @@ export function parseTransition(line: string): Transition | null {
 	const to = m[3] ?? '';
 	const rest = m[4] ?? '';
 	if (from === 'created') return { at, from: null, to, kind: 'created' };
-	return { at, from, to, kind: rest.includes('detected at startup') ? 'detected' : 'live' };
+	if (rest.includes('detected at startup')) return { at, from, to, kind: 'detected' };
+	const note = /^\s*\((.+)\)\s*$/.exec(rest)?.[1];
+	return note ? { at, from, to, kind: 'live', note } : { at, from, to, kind: 'live' };
 }
 
 /** Returns the lines under `heading`, up to the next `## ` heading or end of file. */
@@ -381,6 +386,52 @@ export function buildSummary(inp: SummaryInput): string[] {
 		out.push('', '*Time before the first recorded change isn’t counted.*');
 	}
 	return out;
+}
+
+// ---------- Phase 2: auto-stage triggers + daily cutoff ----------
+
+/** A TaskNotes timer is running if any time entry has a start and no end. */
+export function isTimerRunning(entries: unknown): boolean {
+	if (!Array.isArray(entries)) return false;
+	return entries.some((e: unknown) => {
+		if (typeof e !== 'object' || e === null) return false;
+		const r = e as Record<string, unknown>;
+		return typeof r.startTime === 'string' && r.startTime.length > 0 && (r.endTime === undefined || r.endTime === null || r.endTime === '');
+	});
+}
+
+/**
+ * Checklist state of a note, from Obsidian's list cache (`task`: ' ' = unticked,
+ * any other character = ticked, undefined = not a checkbox).
+ * Returns null when the note has no checkboxes at all.
+ */
+export function checklistComplete(items: { task?: string }[] | undefined): boolean | null {
+	const boxes = (items ?? []).filter((i) => typeof i.task === 'string');
+	if (boxes.length === 0) return null;
+	return boxes.every((i) => i.task !== ' ');
+}
+
+/** The most recent daily cutoff (that weekday's end time) at or before `now`. */
+export function mostRecentCutoff(now: Date, schedule: WeekSchedule): Date {
+	for (let back = 0; back < 8; back++) {
+		const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - back);
+		const win = schedule[day.getDay()] ?? { start: '09:00', end: '17:00' };
+		const cut = atTime(day, win.end);
+		if (cut.getTime() <= now.getTime()) return cut;
+	}
+	return atTime(now, '00:00');
+}
+
+/**
+ * Decides whether a daily cutoff has passed since the last one acted on.
+ * `record` is what to store as the new "last cutoff run". First run (no record)
+ * only records, so installing the plugin doesn't fire anything.
+ */
+export function cutoffDue(now: Date, schedule: WeekSchedule, lastRun: string | null): { act: boolean; record: string | null } {
+	const cut = mostRecentCutoff(now, schedule);
+	const last = parseTimestamp(lastRun);
+	if (last && cut.getTime() <= last.getTime()) return { act: false, record: null };
+	return { act: last !== null, record: toLocalIso(cut) };
 }
 
 export const DEFAULT_WEEK: WeekSchedule = [

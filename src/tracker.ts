@@ -18,6 +18,8 @@ import {
 	Transition,
 	appendToSection,
 	buildSummary,
+	checklistComplete,
+	isTimerRunning,
 	parseHistory,
 	replaceSection,
 	formatTransition,
@@ -28,7 +30,7 @@ import {
 	splitBuckets,
 	toLocalIso,
 } from './lifecycle';
-import { TaskNotesConfig, isCompletedStatus, isTaskFile, labelFor, statusOf } from './tasknotes';
+import { TaskNotesConfig, hasStatus, isCompletedStatus, isTaskFile, labelFor, orderOf, statusOf } from './tasknotes';
 import { vaultBasePath } from './settings';
 
 export const FIELD = {
@@ -52,6 +54,11 @@ export class Tracker {
 	private ready = false;
 	private timers = new Map<string, number>();
 	private queued = new Map<string, Transition[]>();
+	/** Phase 2: last-seen timer / checklist state, to fire only on the edge (start / last box ticked). */
+	private timerRunning = new Map<string, boolean>();
+	private checklistDone = new Map<string, boolean | null>();
+	/** Status writes Sheiko made itself, with the reason to put on the history line. */
+	private pendingReason = new Map<string, { to: string; note: string }>();
 
 	constructor(plugin: SheikoPlugin) {
 		this.plugin = plugin;
@@ -66,8 +73,13 @@ export class Tracker {
 		return base !== null && this.plugin.settings.allowedVaults.includes(base);
 	}
 
+	get isReady(): boolean {
+		return this.ready;
+	}
+
 	stop(): void {
 		this.ready = false;
+		this.pendingReason.clear();
 		this.timers.forEach((t) => window.clearTimeout(t));
 		this.timers.clear();
 		this.queued.clear();
@@ -94,6 +106,7 @@ export class Tracker {
 			const status = statusOf(app, file, this.cfg);
 			if (status === null) continue;
 			seen.add(file.path);
+			this.baselineTriggers(file);
 			const prev = data.lastStatus[file.path];
 			if (prev === undefined) {
 				// First time Sheiko has seen this task: tracked from here forward, nothing written.
@@ -143,19 +156,79 @@ export class Tracker {
 		const status = statusOf(app, file, this.cfg);
 		if (status === null) return;
 		const prev = data.lastStatus[file.path];
-		if (prev === status) return;
-		data.lastStatus[file.path] = status;
-		void this.plugin.saveData(data);
+		if (prev !== status) {
+			data.lastStatus[file.path] = status;
+			void this.plugin.saveData(data);
+			const now = new Date();
+			if (prev === undefined) {
+				this.baselineTriggers(file);
+				if (now.getTime() - file.stat.ctime > NEW_FILE_WINDOW_MS) return; // existing note newly seen: baseline only
+				const fm: FM | undefined = app.metadataCache.getFileCache(file)?.frontmatter;
+				const created = parseTimestamp(fm?.[this.cfg.field.dateCreated]) ?? new Date(file.stat.ctime);
+				this.enqueue(file, { at: created, from: null, to: status, kind: 'created' });
+				return;
+			}
+			const pending = this.pendingReason.get(file.path);
+			this.pendingReason.delete(file.path);
+			const t: Transition = { at: now, from: prev, to: status, kind: 'live' };
+			if (pending && pending.to === status) t.note = pending.note;
+			this.enqueue(file, t);
+		}
+		this.checkAutoStage(file, status);
+	}
 
-		const now = new Date();
-		if (prev === undefined) {
-			if (now.getTime() - file.stat.ctime > NEW_FILE_WINDOW_MS) return; // existing note newly seen: baseline only
-			const fm: FM | undefined = app.metadataCache.getFileCache(file)?.frontmatter;
-			const created = parseTimestamp(fm?.[this.cfg.field.dateCreated]) ?? new Date(file.stat.ctime);
-			this.enqueue(file, { at: created, from: null, to: status, kind: 'created' });
+	// ---------- Phase 2: auto-stage ----------
+
+	private baselineTriggers(file: TFile): void {
+		const cache = this.plugin.app.metadataCache.getFileCache(file);
+		const fm: FM = cache?.frontmatter ?? {};
+		this.timerRunning.set(file.path, isTimerRunning(fm[this.cfg.field.timeEntries]));
+		this.checklistDone.set(file.path, checklistComplete(cache?.listItems));
+	}
+
+	/** Fires only on an edge: a timer that just started, or the last unticked box just ticked. Moves forward only. */
+	private checkAutoStage(file: TFile, status: string): void {
+		const s = this.plugin.settings;
+		const cache = this.plugin.app.metadataCache.getFileCache(file);
+		const fm: FM = cache?.frontmatter ?? {};
+		const runningNow = isTimerRunning(fm[this.cfg.field.timeEntries]);
+		const wasRunning = this.timerRunning.get(file.path);
+		this.timerRunning.set(file.path, runningNow);
+		const doneNow = checklistComplete(cache?.listItems);
+		const wasDone = this.checklistDone.get(file.path);
+		this.checklistDone.set(file.path, doneNow);
+		if (isCompletedStatus(this.cfg, status) || this.pendingReason.has(file.path)) return;
+		const forward = (target: string): boolean =>
+			hasStatus(this.cfg, target) && status !== target && orderOf(this.cfg, status) < orderOf(this.cfg, target);
+		// Checklist first: if both happen at once, review wins.
+		if (s.autoStageChecklist && doneNow === true && wasDone === false && forward(s.reviewStatus)) {
+			void this.setStatus(file, s.reviewStatus, 'auto: all boxes ticked');
 			return;
 		}
-		this.enqueue(file, { at: now, from: prev, to: status, kind: 'live' });
+		if (s.autoStageTimer && runningNow && wasRunning === false && forward(s.progressStatus)) {
+			void this.setStatus(file, s.progressStatus, 'auto: timer started');
+		}
+	}
+
+	/**
+	 * Sheiko changing a task's status itself (auto-stage, or a sign-off prompt button).
+	 * The change then flows through the normal live-change path, so history, closure
+	 * and summary behave exactly as if the user had changed it; `note` goes on the history line.
+	 */
+	async setStatus(file: TFile, to: string, note: string): Promise<boolean> {
+		if (!this.writesAllowed()) {
+			new Notice('Sheiko: writes are not allowed in this vault (see Sheiko settings → Safety).');
+			return false;
+		}
+		if (this.plugin.settings.dryRun) {
+			console.debug(`[Sheiko dry run] ${file.path}: set status → ${to} (${note})`);
+			return false;
+		}
+		this.pendingReason.set(file.path, { to, note });
+		await this.plugin.app.fileManager.processFrontMatter(file, (fm: FM) => {
+			fm[this.cfg.field.status] = to;
+		});
+		return true;
 	}
 
 	onRename(file: TAbstractFile, oldPath: string): void {
@@ -166,6 +239,12 @@ export class Tracker {
 			delete data.lastStatus[oldPath];
 		}
 		for (const u of data.unwitnessedCloses) if (u.path === oldPath) u.path = file.path;
+		for (const m of [this.timerRunning, this.checklistDone] as Map<string, unknown>[]) {
+			if (m.has(oldPath)) {
+				m.set(file.path, m.get(oldPath));
+				m.delete(oldPath);
+			}
+		}
 		const q = this.queued.get(oldPath);
 		if (q) {
 			this.queued.set(file.path, q);
@@ -177,6 +256,8 @@ export class Tracker {
 	onDelete(file: TAbstractFile): void {
 		const data = this.plugin.data;
 		delete data.lastStatus[file.path];
+		this.timerRunning.delete(file.path);
+		this.checklistDone.delete(file.path);
 		data.unwitnessedCloses = data.unwitnessedCloses.filter((u) => u.path !== file.path);
 		void this.plugin.saveData(data);
 	}
@@ -208,6 +289,9 @@ export class Tracker {
 				const after = await this.applyClosure(file, t.at);
 				await this.writeSummary(file, after);
 			} else if (was && !now) await this.applyReopen(file);
+			if (t.to === this.plugin.settings.reviewStatus && this.plugin.settings.promptOnReview) {
+				this.plugin.promptSignoff([file], 'review');
+			}
 		}
 	}
 

@@ -7,6 +7,7 @@ export interface TaskNotesStatus {
 	value: string;
 	label: string;
 	isCompleted: boolean;
+	order: number;
 }
 
 export interface TaskNotesConfig {
@@ -37,9 +38,10 @@ const FALLBACK: TaskNotesConfig = {
 	taskPropertyName: '',
 	taskPropertyValue: '',
 	statuses: [
-		{ value: 'open', label: 'Open', isCompleted: false },
-		{ value: 'in-progress', label: 'In progress', isCompleted: false },
-		{ value: 'done', label: 'Done', isCompleted: true },
+		{ value: 'open', label: 'Open', isCompleted: false, order: 1 },
+		{ value: 'in-progress', label: 'In progress', isCompleted: false, order: 2 },
+		{ value: 'in-review', label: 'In Review', isCompleted: false, order: 3 },
+		{ value: 'done', label: 'Done', isCompleted: true, order: 4 },
 	],
 	field: {
 		status: 'status',
@@ -57,6 +59,7 @@ interface RawStatus {
 	value?: unknown;
 	label?: unknown;
 	isCompleted?: unknown;
+	order?: unknown;
 }
 
 interface RawTaskNotesData {
@@ -85,10 +88,11 @@ export async function loadTaskNotesConfig(app: App): Promise<TaskNotesConfig> {
 		const fm = raw.fieldMapping ?? {};
 		const statuses: TaskNotesStatus[] = (raw.customStatuses ?? [])
 			.filter((s) => typeof s.value === 'string')
-			.map((s) => ({
+			.map((s, i) => ({
 				value: s.value as string,
 				label: str(s.label, s.value as string),
 				isCompleted: s.isCompleted === true,
+				order: typeof s.order === 'number' ? s.order : i,
 			}));
 		return {
 			found: true,
@@ -145,4 +149,12 @@ export function isCompletedStatus(cfg: TaskNotesConfig, status: string | null): 
 
 export function labelFor(cfg: TaskNotesConfig, status: string): string {
 	return cfg.statuses.find((s) => s.value === status)?.label ?? status;
+}
+
+export function hasStatus(cfg: TaskNotesConfig, status: string): boolean {
+	return cfg.statuses.some((s) => s.value === status);
+}
+
+export function orderOf(cfg: TaskNotesConfig, status: string | null): number {
+	return cfg.statuses.find((s) => s.value === status)?.order ?? -1;
 }
