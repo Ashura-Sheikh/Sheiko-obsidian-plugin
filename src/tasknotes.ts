@@ -27,6 +27,8 @@ export interface TaskNotesConfig {
 		timeEntries: string;
 		priority: string;
 		title: string;
+		recurrence: string;
+		archiveTag: string;
 	};
 }
 
@@ -52,6 +54,8 @@ const FALLBACK: TaskNotesConfig = {
 		timeEntries: 'timeEntries',
 		priority: 'priority',
 		title: 'title',
+		recurrence: 'recurrence',
+		archiveTag: 'archived',
 	},
 };
 
@@ -111,6 +115,8 @@ export async function loadTaskNotesConfig(app: App): Promise<TaskNotesConfig> {
 				timeEntries: str(fm.timeEntries, 'timeEntries'),
 				priority: str(fm.priority, 'priority'),
 				title: str(fm.title, 'title'),
+				recurrence: str(fm.recurrence, 'recurrence'),
+				archiveTag: str(fm.archiveTag, 'archived'),
 			},
 		};
 	} catch (e) {
@@ -119,7 +125,7 @@ export async function loadTaskNotesConfig(app: App): Promise<TaskNotesConfig> {
 	}
 }
 
-function tagList(fm: Record<string, unknown>): string[] {
+export function tagList(fm: Record<string, unknown>): string[] {
 	const t = fm.tags;
 	const arr = Array.isArray(t) ? t : typeof t === 'string' ? t.split(/[,\s]+/) : [];
 	return arr.filter((x): x is string => typeof x === 'string').map((x) => x.replace(/^#/, '').trim());

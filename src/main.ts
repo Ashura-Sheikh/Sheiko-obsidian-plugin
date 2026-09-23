@@ -1,5 +1,6 @@
 import { Notice, Plugin, TFile } from 'obsidian';
-import { cutoffDue } from './lifecycle';
+import { cutoffDue, parseTimestamp } from './lifecycle';
+import { Roller } from './roller';
 import { DEFAULT_SETTINGS, PluginData, SheikoSettingTab, SheikoSettings } from './settings';
 import { TaskNotesConfig, isTaskFile, loadTaskNotesConfig, statusOf } from './tasknotes';
 import { Tracker } from './tracker';
@@ -10,6 +11,7 @@ export default class SheikoPlugin extends Plugin {
 	data!: PluginData;
 	taskNotes!: TaskNotesConfig;
 	tracker!: Tracker;
+	roller!: Roller;
 	private signoff: SignoffModal | null = null;
 
 	get settings(): SheikoSettings {
@@ -20,6 +22,7 @@ export default class SheikoPlugin extends Plugin {
 		await this.loadPluginData();
 		this.taskNotes = await loadTaskNotesConfig(this.app);
 		this.tracker = new Tracker(this);
+		this.roller = new Roller(this);
 		this.addSettingTab(new SheikoSettingTab(this.app, this));
 
 		this.addCommand({
@@ -54,6 +57,11 @@ export default class SheikoPlugin extends Plugin {
 				if (files.length === 0) new Notice('Sheiko: nothing is waiting for sign-off.');
 				else this.promptSignoff(files, 'review');
 			},
+		});
+		this.addCommand({
+			id: 'roll-now',
+			name: 'Roll unfinished tasks now (scheduled today or earlier → tomorrow)',
+			callback: () => void this.roller.run(new Date(), true),
 		});
 		this.addCommand({
 			id: 'list-unwitnessed-closes',
@@ -111,7 +119,8 @@ export default class SheikoPlugin extends Plugin {
 	/**
 	 * Acts once per daily cutoff (that weekday's end time). If Obsidian was closed
 	 * over one or more cutoffs, it acts once when it next opens. The first run only
-	 * records the latest cutoff, so installing the plugin doesn't trigger a prompt.
+	 * records the latest cutoff, so installing the plugin doesn't trigger anything.
+	 * Order: auto-roll first (Phase 3), then the sign-off prompt (Phase 2).
 	 */
 	async checkCutoff(): Promise<void> {
 		if (!this.tracker.isReady) return;
@@ -120,6 +129,8 @@ export default class SheikoPlugin extends Plugin {
 		this.data.lastCutoffRun = record;
 		await this.saveData(this.data);
 		if (!act) return;
+		const cut = parseTimestamp(record);
+		if (this.settings.autoRoll && cut) await this.roller.run(cut, false);
 		if (this.settings.promptAtCutoff) this.promptSignoff(this.tasksAwaitingSignoff(), 'cutoff');
 	}
 

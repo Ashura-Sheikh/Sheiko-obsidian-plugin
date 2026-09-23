@@ -26,6 +26,9 @@ export interface SheikoSettings {
 	promptOnReview: boolean;
 	/** Prompt at the daily cutoff for everything still in reviewStatus. */
 	promptAtCutoff: boolean;
+	// ---- Phase 3 ----
+	/** At each day's end time, roll unfinished tasks' `scheduled` to the next day. */
+	autoRoll: boolean;
 }
 
 export const DEFAULT_SETTINGS: SheikoSettings = {
@@ -41,6 +44,7 @@ export const DEFAULT_SETTINGS: SheikoSettings = {
 	autoStageChecklist: true,
 	promptOnReview: true,
 	promptAtCutoff: true,
+	autoRoll: true,
 };
 
 export interface PluginData {
@@ -167,13 +171,28 @@ export class SheikoSettingTab extends PluginSettingTab {
 		toggle('Prompt for sign-off on review', 'Ask to approve and close as soon as a task enters review.', 'promptOnReview');
 		toggle('Prompt for sign-off at the daily cutoff', 'At each day\'s end time, ask about every task still waiting in review.', 'promptAtCutoff');
 
+		// ---- Auto-roll (Phase 3) ----
+		new Setting(containerEl).setName('Auto-roll').setHeading();
+		new Setting(containerEl)
+			.setName('Roll unfinished tasks at the end of each day')
+			.setDesc(
+				'At each day\'s end time (weekends included), unfinished tasks scheduled for that day or earlier move to the next day. ' +
+					'Only the scheduled date moves; due never changes. Each roll is noted in the task and in that day\'s daily note.',
+			)
+			.addToggle((t) =>
+				t.setValue(s.autoRoll).onChange(async (v) => {
+					s.autoRoll = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+
 		// ---- Working hours ----
 		new Setting(containerEl).setName('Working hours').setHeading();
 		containerEl.createEl('p', {
 			cls: 'setting-item-description',
 			text:
 				'Mon–Fri time inside these hours counts as working, and the rest as overnight. Saturday and Sunday always count as weekend. ' +
-				'The end time is also the daily cutoff for rolling unfinished tasks to the next day (coming in Phase 3). Format HH:mm.',
+				'The end time is also the daily cutoff: when unfinished tasks roll and the end-of-day sign-off prompt appears. Format HH:mm.',
 		});
 		DAYS.forEach((name, i) => {
 			const day = s.week[i];
