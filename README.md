@@ -4,6 +4,10 @@ An Obsidian plugin that works **alongside [TaskNotes](https://github.com/calluma
 
 > **Status: in development (v0.1.0), desktop only.** Plugin ID `sheiko-task-lifecycle`. Tested only against TaskNotes **4.13.4** in a dedicated test vault. Not published to the community plugin list.
 
+![The lifecycle window on a closed task: Context, Closure, and time per status split into working, overnight and weekend](docs/screenshots/lifecycle-window.png)
+
+*Click the ribbon icon (history clock) on a TaskNotes task to open the lifecycle window. Sample task names in these screenshots are test data and may not match the task's current status.*
+
 ## What it does
 
 ### 1. Task lifecycle (Phase 1)
@@ -20,12 +24,16 @@ An Obsidian plugin that works **alongside [TaskNotes](https://github.com/calluma
 - **Auto-stage (forward only).** Starting a TaskNotes timer moves the task to the working status. Ticking the last unticked checkbox moves it to the review status. Moves happen only when something changes, never just because of existing state, and never backwards or out of a completed status.
 - **Sign-off prompt.** Opens when a task enters review, and at each day's end time for anything still waiting. Buttons: *Approve and close*, *Send back*, *Open*, *Later*. **Closing a task is always a user click, never automatic.**
 
+![The Sign-off needed window with Open, Send back to In progress, Approve and close, and Later](docs/screenshots/sign-off-prompt.png)
+
 ### 3. Auto-roll and summary (Phase 3)
 
 - At each day's end time (**weekends included**), unfinished tasks scheduled on or before that day have `scheduled` moved to the next day. A time of day, if present, is kept. **`due` never changes**, so slippage stays visible. `rollCount` goes up by one each time.
 - **Not rolled:** completed, scheduled in the future, recurring (TaskNotes uses `scheduled` as the repeat anchor), and archived tasks. Tasks with **no date** are listed as "give these a date".
 - **Summary, in two places:** a Context line on each rolled task, and a `## 🔁 Rolled Over` section in that day's daily note (one block per run, never overwritten). In-review tasks are listed first (⭐), and past-due tasks are flagged ⚠️.
 - If Obsidian was closed at the cutoff, one **catch-up** roll runs on next open, labelled as a catch-up.
+
+![A daily note's Rolled Over section: the run time, a table of rolled tasks, and the list of tasks with no date](docs/screenshots/rolled-over-daily-note.png)
 
 ## Commands
 
@@ -34,6 +42,10 @@ An Obsidian plugin that works **alongside [TaskNotes](https://github.com/calluma
 - Show tasks waiting for sign-off
 - Roll unfinished tasks now (scheduled today or earlier → tomorrow)
 - List tasks closed while Obsidian was shut
+
+The ribbon icon and the lifecycle command need a TaskNotes task open. On any other note you get a notice instead:
+
+![The notice 'Sheiko: open a TaskNotes task first.' after clicking the ribbon icon on a daily note](docs/screenshots/open-task-first.png)
 
 ## Settings
 
@@ -51,11 +63,17 @@ An Obsidian plugin that works **alongside [TaskNotes](https://github.com/calluma
 
 Statuses and field names are read from TaskNotes' settings rather than hardcoded. The review status (`in-review`) isn't part of TaskNotes' default set, so add it in TaskNotes first if you want the sign-off flow.
 
+![Settings, top: Safety (allowed vault, dry run, max edits), You (identity), and Stages and sign-off](docs/screenshots/settings-1.png)
+
+<img src="docs/screenshots/settings-2.png" alt="Settings, bottom: sign-off toggles, Auto-roll, and the working-hours table" width="60%">
+
 ## Requirements
 
 - Obsidian **1.4.4+**, desktop only
 - **TaskNotes** installed and enabled (tested on 4.13.4)
 - Obsidian's Daily Notes settings (folder and date format) are used for the Rolled Over summary
+
+![Installed plugins: Sheiko Task Lifecycle v0.1.0 alongside TaskNotes 4.13.4 and Tasks](docs/screenshots/installed-plugins.png)
 
 ## Known limits
 
