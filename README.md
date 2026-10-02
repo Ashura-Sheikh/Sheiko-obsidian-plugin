@@ -2,7 +2,7 @@
 
 An Obsidian plugin that works **alongside [TaskNotes](https://github.com/callumalpass/tasknotes)** to add task-lifecycle tracking and a daily auto-roll for unfinished tasks.
 
-> **Status: early release (v0.1.0), desktop only.** Plugin ID `sheiko-task-lifecycle`. Tested against TaskNotes **4.13.4**. Not yet in the community plugin list.
+> **Status: early release (v0.1.0), desktop only.** Plugin ID `sheiko-task-lifecycle`. Tested against TaskNotes **4.13.4**. Submitted to the [Obsidian Community directory](https://community.obsidian.md/plugins/sheiko-task-lifecycle) (review pending).
 
 ![The lifecycle window on a closed task: Context, Closure, and time per status split into working, overnight and weekend](docs/screenshots/lifecycle-window.png)
 
