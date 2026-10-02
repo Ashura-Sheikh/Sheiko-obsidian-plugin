@@ -82,9 +82,10 @@ The ribbon icon and the lifecycle command need a TaskNotes task open. On any oth
 
 Statuses and field names are read from TaskNotes' settings rather than hardcoded. TaskNotes' default statuses don't include a review status, so add one in TaskNotes first if you want the sign-off flow.
 
-![Settings, top: Safety (allowed vault, dry run, max edits), You (identity), and Stages and sign-off](docs/screenshots/settings-1.png)
-
-<img src="docs/screenshots/settings-2.png" alt="Settings, bottom: sign-off toggles, Auto-roll, and the working-hours table" width="60%">
+<p>
+  <img src="docs/screenshots/settings-stages.png" alt="Settings: Stages and sign-off, with the working, review and done statuses and the four auto-stage and prompt toggles" width="49%">
+  <img src="docs/screenshots/settings-auto-roll.png" alt="Settings: Auto-roll toggle and the per-weekday working-hours table" width="49%">
+</p>
 
 ## Requirements
 
