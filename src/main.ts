@@ -9,14 +9,12 @@ import { SignoffModal, SignoffReason } from './ui/signoff-modal';
 
 export default class SheikoPlugin extends Plugin {
 	data!: PluginData;
+	/** Same object as data.settings (assigned once in loadPluginData; never replaced, only mutated). */
+	settings!: SheikoSettings;
 	taskNotes!: TaskNotesConfig;
 	tracker!: Tracker;
 	roller!: Roller;
 	private signoff: SignoffModal | null = null;
-
-	get settings(): SheikoSettings {
-		return this.data.settings;
-	}
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
@@ -153,6 +151,7 @@ export default class SheikoPlugin extends Plugin {
 			unwitnessedCloses: [...(raw.unwitnessedCloses ?? [])],
 			lastCutoffRun: typeof raw.lastCutoffRun === 'string' ? raw.lastCutoffRun : null,
 		};
+		this.settings = this.data.settings;
 	}
 
 	async saveSettings(): Promise<void> {

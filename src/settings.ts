@@ -1,4 +1,5 @@
 import { App, FileSystemAdapter, PluginSettingTab, Setting } from 'obsidian';
+import type { SettingDefinitionItem } from 'obsidian';
 import type SheikoPlugin from './main';
 import { DEFAULT_WEEK, WeekSchedule } from './lifecycle';
 
@@ -65,6 +66,24 @@ export function vaultBasePath(app: App): string | null {
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const HM = /^([01]?\d|2[0-3]):[0-5]\d$/;
 
+/** One settings row: its name/description (also used by Obsidian 1.13's settings search) and how to fill it in. */
+interface Row {
+	name: string;
+	desc: () => string;
+	/** Adds the control(s) to the row. Absent for text-only rows. */
+	render?: (setting: Setting) => void;
+}
+
+interface Section {
+	heading: string;
+	rows: Row[];
+}
+
+/**
+ * The settings are defined once (sections()) and shown two ways:
+ * - Obsidian 1.13+: getSettingDefinitions(), so they appear in Obsidian's settings search.
+ * - Older versions: display(), which 1.13+ no longer calls once definitions are returned.
+ */
 export class SheikoSettingTab extends PluginSettingTab {
 	plugin: SheikoPlugin;
 
@@ -73,78 +92,56 @@ export class SheikoSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return this.sections().map((sec) => ({
+			type: 'group' as const,
+			heading: sec.heading,
+			items: sec.rows.map((row) => ({
+				name: row.name,
+				desc: row.desc(),
+				render: (setting: Setting) => this.fill(setting, row),
+			})),
+		}));
+	}
+
+	/** Fallback for Obsidian versions before 1.13. */
 	display(): void {
 		const { containerEl } = this;
-		const s = this.plugin.settings;
 		containerEl.empty();
+		for (const sec of this.sections()) {
+			new Setting(containerEl).setName(sec.heading).setHeading();
+			for (const row of sec.rows) this.fill(new Setting(containerEl), row);
+		}
+	}
 
-		// ---- Safety ----
-		new Setting(containerEl).setName('Safety').setHeading();
+	private fill(setting: Setting, row: Row): void {
+		setting.setName(row.name).setDesc(row.desc());
+		row.render?.(setting);
+	}
+
+	private sections(): Section[] {
+		const s = this.plugin.settings;
 		const base = vaultBasePath(this.app);
-		const allowed = base !== null && s.allowedVaults.includes(base);
-		new Setting(containerEl)
-			.setName('Allow writes in this vault')
-			.setDesc(
+		const allowedDesc = (): string => {
+			const allowed = base !== null && s.allowedVaults.includes(base);
+			return (
 				`${base ?? '(unknown path)'}: ${allowed ? 'allowed' : 'not allowed. Sheiko is read-only here'}. ` +
-					'Sheiko only changes notes in vaults on this list.',
-			)
-			.addToggle((t) =>
-				t.setValue(allowed).onChange(async (v) => {
-					if (base === null) return;
-					s.allowedVaults = v
-						? [...new Set([...s.allowedVaults, base])]
-						: s.allowedVaults.filter((p) => p !== base);
-					await this.plugin.saveSettings();
-					// Turning writes on/off restarts tracking with a fresh baseline check.
-					await this.plugin.tracker.reconcile();
-					this.display();
-				}),
+				'Sheiko only changes notes in vaults on this list.'
 			);
-		new Setting(containerEl)
-			.setName('Dry run')
-			.setDesc('Log what Sheiko would change to the developer console, without changing any note.')
-			.addToggle((t) =>
-				t.setValue(s.dryRun).onChange(async (v) => {
-					s.dryRun = v;
-					await this.plugin.saveSettings();
-				}),
-			);
-		new Setting(containerEl)
-			.setName('Max edits per run')
-			.setDesc('Batch runs (the startup catch-up and auto-roll) stop after this many notes. The rest are picked up on the next run.')
-			.addText((t) =>
-				t.setValue(String(s.maxEditsPerRun)).onChange(async (v) => {
-					const n = Number(v);
-					if (Number.isInteger(n) && n > 0) {
-						s.maxEditsPerRun = n;
-						await this.plugin.saveSettings();
-					}
-				}),
-			);
-
-		// ---- Identity ----
-		new Setting(containerEl).setName('You').setHeading();
-		new Setting(containerEl)
-			.setName('Your identity')
-			.setDesc('Written as closedBy when Sheiko records a close, and on context entries you add. Leave blank and closedBy isn\'t written.')
-			.addText((t) =>
-				t
-					.setPlaceholder('Your name')
-					.setValue(s.identity)
-					.onChange(async (v) => {
-						s.identity = v.trim();
+		};
+		const toggle = (key: 'dryRun' | 'autoStageTimer' | 'autoStageChecklist' | 'promptOnReview' | 'promptAtCutoff' | 'autoRoll') =>
+			(setting: Setting): void => {
+				setting.addToggle((t) =>
+					t.setValue(s[key]).onChange(async (v) => {
+						s[key] = v;
 						await this.plugin.saveSettings();
 					}),
-			);
-
-		// ---- Stages & sign-off (Phase 2) ----
-		new Setting(containerEl).setName('Stages and sign-off').setHeading();
+				);
+			};
 		const statuses = this.plugin.taskNotes.statuses;
-		const pick = (name: string, desc: string, key: 'progressStatus' | 'reviewStatus' | 'doneStatus', onlyCompleted: boolean, allowNone = false): void => {
-			new Setting(containerEl)
-				.setName(name)
-				.setDesc(desc)
-				.addDropdown((d) => {
+		const pick = (key: 'progressStatus' | 'reviewStatus' | 'doneStatus', onlyCompleted: boolean, allowNone = false) =>
+			(setting: Setting): void => {
+				setting.addDropdown((d) => {
 					if (allowNone) d.addOption('', 'Not set (sign-off off)');
 					for (const st of statuses) if (st.isCompleted === onlyCompleted) d.addOption(st.value, st.label);
 					if (s[key] && !statuses.some((st) => st.value === s[key])) d.addOption(s[key], `${s[key]} (not in TaskNotes)`);
@@ -153,82 +150,158 @@ export class SheikoSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					});
 				});
-		};
-		pick('Working status', 'Where a task moves when its timer starts.', 'progressStatus', false);
-		pick(
-			'Review status',
-			'Where a task moves when every checkbox is ticked. Tasks here wait for sign-off. While this isn\'t set, the checkbox move and both sign-off prompts are off.',
-			'reviewStatus',
-			false,
-			true,
-		);
-		pick('Done status', 'What "Approve and close" in the sign-off prompt sets.', 'doneStatus', true);
-		const toggle = (name: string, desc: string, key: 'autoStageTimer' | 'autoStageChecklist' | 'promptOnReview' | 'promptAtCutoff'): void => {
-			new Setting(containerEl)
-				.setName(name)
-				.setDesc(desc)
-				.addToggle((t) =>
-					t.setValue(s[key]).onChange(async (v) => {
-						s[key] = v;
-						await this.plugin.saveSettings();
-					}),
-				);
-		};
-		toggle('Timer start moves task to working', 'Only moves it forward, from a status before the working status.', 'autoStageTimer');
-		toggle('All boxes ticked moves task to review', 'Fires when the last unticked box is ticked, not on tasks that were already fully ticked.', 'autoStageChecklist');
-		toggle('Prompt for sign-off on review', 'Ask to approve and close as soon as a task enters review.', 'promptOnReview');
-		toggle('Prompt for sign-off at the daily cutoff', 'At each day\'s end time, ask about every task still waiting in review.', 'promptAtCutoff');
+			};
+		const hours = (i: number) =>
+			(setting: Setting): void => {
+				const day = s.week[i];
+				if (!day) return;
+				setting
+					.addText((t) =>
+						t
+							.setPlaceholder('09:00')
+							.setValue(day.start)
+							.onChange(async (v) => {
+								if (HM.test(v)) {
+									day.start = v;
+									await this.plugin.saveSettings();
+								}
+							}),
+					)
+					.addText((t) =>
+						t
+							.setPlaceholder('17:00')
+							.setValue(day.end)
+							.onChange(async (v) => {
+								if (HM.test(v)) {
+									day.end = v;
+									await this.plugin.saveSettings();
+								}
+							}),
+					);
+			};
 
-		// ---- Auto-roll (Phase 3) ----
-		new Setting(containerEl).setName('Auto-roll').setHeading();
-		new Setting(containerEl)
-			.setName('Roll unfinished tasks at the end of each day')
-			.setDesc(
-				'At each day\'s end time (weekends included), unfinished tasks scheduled for that day or earlier move to the next day. ' +
-					'Only the scheduled date moves; due never changes. Each roll is noted in the task and in that day\'s daily note. Off by default: try dry run first.',
-			)
-			.addToggle((t) =>
-				t.setValue(s.autoRoll).onChange(async (v) => {
-					s.autoRoll = v;
-					await this.plugin.saveSettings();
-				}),
-			);
-
-		// ---- Working hours ----
-		new Setting(containerEl).setName('Working hours').setHeading();
-		containerEl.createEl('p', {
-			cls: 'setting-item-description',
-			text:
-				'Mon–Fri time inside these hours counts as working, and the rest as overnight. Saturday and Sunday always count as weekend. ' +
-				'The end time is also the daily cutoff: when unfinished tasks roll and the end-of-day sign-off prompt appears. Format HH:mm.',
-		});
-		DAYS.forEach((name, i) => {
-			const day = s.week[i];
-			if (!day) return;
-			new Setting(containerEl)
-				.setName(name)
-				.addText((t) =>
-					t
-						.setPlaceholder('09:00')
-						.setValue(day.start)
-						.onChange(async (v) => {
-							if (HM.test(v)) {
-								day.start = v;
-								await this.plugin.saveSettings();
-							}
-						}),
-				)
-				.addText((t) =>
-					t
-						.setPlaceholder('17:00')
-						.setValue(day.end)
-						.onChange(async (v) => {
-							if (HM.test(v)) {
-								day.end = v;
-								await this.plugin.saveSettings();
-							}
-						}),
-				);
-		});
+		return [
+			{
+				heading: 'Safety',
+				rows: [
+					{
+						name: 'Allow writes in this vault',
+						desc: allowedDesc,
+						render: (setting) => {
+							setting.addToggle((t) =>
+								t.setValue(base !== null && s.allowedVaults.includes(base)).onChange(async (v) => {
+									if (base === null) return;
+									s.allowedVaults = v
+										? [...new Set([...s.allowedVaults, base])]
+										: s.allowedVaults.filter((p) => p !== base);
+									await this.plugin.saveSettings();
+									// Turning writes on/off restarts tracking with a fresh baseline check.
+									await this.plugin.tracker.reconcile();
+									setting.setDesc(allowedDesc());
+								}),
+							);
+						},
+					},
+					{
+						name: 'Dry run',
+						desc: () => 'Log what Sheiko would change to the developer console, without changing any note.',
+						render: toggle('dryRun'),
+					},
+					{
+						name: 'Max edits per run',
+						desc: () => 'Batch runs (the startup catch-up and auto-roll) stop after this many notes. The rest are picked up on the next run.',
+						render: (setting) => {
+							setting.addText((t) =>
+								t.setValue(String(s.maxEditsPerRun)).onChange(async (v) => {
+									const n = Number(v);
+									if (Number.isInteger(n) && n > 0) {
+										s.maxEditsPerRun = n;
+										await this.plugin.saveSettings();
+									}
+								}),
+							);
+						},
+					},
+				],
+			},
+			{
+				heading: 'You',
+				rows: [
+					{
+						name: 'Your identity',
+						desc: () =>
+							"Written as closedBy when Sheiko records a close, and on context entries you add. Leave blank and closedBy isn't written.",
+						render: (setting) => {
+							setting.addText((t) =>
+								t
+									.setPlaceholder('Your name')
+									.setValue(s.identity)
+									.onChange(async (v) => {
+										s.identity = v.trim();
+										await this.plugin.saveSettings();
+									}),
+							);
+						},
+					},
+				],
+			},
+			{
+				heading: 'Stages and sign-off',
+				rows: [
+					{ name: 'Working status', desc: () => 'Where a task moves when its timer starts.', render: pick('progressStatus', false) },
+					{
+						name: 'Review status',
+						desc: () =>
+							"Where a task moves when every checkbox is ticked. Tasks here wait for sign-off. While this isn't set, the checkbox move and both sign-off prompts are off.",
+						render: pick('reviewStatus', false, true),
+					},
+					{ name: 'Done status', desc: () => 'What "Approve and close" in the sign-off prompt sets.', render: pick('doneStatus', true) },
+					{
+						name: 'Timer start moves task to working',
+						desc: () => 'Only moves it forward, from a status before the working status.',
+						render: toggle('autoStageTimer'),
+					},
+					{
+						name: 'All boxes ticked moves task to review',
+						desc: () => 'Fires when the last unticked box is ticked, not on tasks that were already fully ticked.',
+						render: toggle('autoStageChecklist'),
+					},
+					{
+						name: 'Prompt for sign-off on review',
+						desc: () => 'Ask to approve and close as soon as a task enters review.',
+						render: toggle('promptOnReview'),
+					},
+					{
+						name: 'Prompt for sign-off at the daily cutoff',
+						desc: () => "At each day's end time, ask about every task still waiting in review.",
+						render: toggle('promptAtCutoff'),
+					},
+				],
+			},
+			{
+				heading: 'Auto-roll',
+				rows: [
+					{
+						name: 'Roll unfinished tasks at the end of each day',
+						desc: () =>
+							"At each day's end time (weekends included), unfinished tasks scheduled for that day or earlier move to the next day. " +
+							"Only the scheduled date moves; due never changes. Each roll is noted in the task and in that day's daily note. Off by default: try dry run first.",
+						render: toggle('autoRoll'),
+					},
+				],
+			},
+			{
+				heading: 'Working hours',
+				rows: [
+					{
+						name: 'How working hours are used',
+						desc: () =>
+							'Mon–Fri time inside these hours counts as working, and the rest as overnight. Saturday and Sunday always count as weekend. ' +
+							'The end time is also the daily cutoff: when unfinished tasks roll and the end-of-day sign-off prompt appears. Format HH:mm.',
+					},
+					...DAYS.map((name, i) => ({ name, desc: () => `${name}: start and end time.`, render: hours(i) })),
+				],
+			},
+		];
 	}
 }
