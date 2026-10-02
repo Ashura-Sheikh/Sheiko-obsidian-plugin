@@ -126,7 +126,7 @@ export class SheikoSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('You').setHeading();
 		new Setting(containerEl)
 			.setName('Your identity')
-			.setDesc('Written as closedBy when Sheiko records a close, and on Context entries you add. Leave blank and closedBy isn\'t written.')
+			.setDesc('Written as closedBy when Sheiko records a close, and on context entries you add. Leave blank and closedBy isn\'t written.')
 			.addText((t) =>
 				t
 					.setPlaceholder('Your name')

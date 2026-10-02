@@ -49,7 +49,7 @@ export class LifecycleModal extends Modal {
 		this.titleEl.setText(this.file.basename);
 
 		// ---- Context ----
-		contentEl.createEl('h4', { text: 'Context' });
+		new Setting(contentEl).setName('Context').setHeading();
 		const ctx = sectionLines(body, CONTEXT_HEADING).filter((l) => l.trim().startsWith('- '));
 		if (ctx.length === 0) contentEl.createEl('p', { cls: 'sheiko-muted', text: 'No context yet.' });
 		else {
@@ -75,7 +75,7 @@ export class LifecycleModal extends Modal {
 			);
 
 		// ---- Closure ----
-		contentEl.createEl('h4', { text: 'Closure' });
+		new Setting(contentEl).setName('Closure').setHeading();
 		const closure = contentEl.createDiv({ cls: 'sheiko-grid' });
 		const row = (k: string, v: unknown): void => {
 			closure.createSpan({ cls: 'sheiko-muted', text: k });
@@ -96,7 +96,7 @@ export class LifecycleModal extends Modal {
 		row('Recorded by', fm[FIELD.source] === 'sheiko' ? 'Sheiko (seen live)' : fm[cfg.field.completedDate] ? 'Someone else, or by hand' : undefined);
 
 		new Setting(contentEl)
-			.setDesc('Writes Closure + Time per status into the note as a Lifecycle Summary section (refreshed, not duplicated).')
+			.setDesc('Writes closure and time per status into the note as a lifecycle summary section (refreshed, not duplicated).')
 			.addButton((b) =>
 				b.setButtonText('Write summary to note').onClick(async () => {
 					if (await this.plugin.tracker.writeSummary(this.file)) new Notice('Sheiko: summary written.');
@@ -104,7 +104,7 @@ export class LifecycleModal extends Modal {
 			);
 
 		// ---- Time per status ----
-		contentEl.createEl('h4', { text: 'Time per status' });
+		new Setting(contentEl).setName('Time per status').setHeading();
 		const history = parseHistory(body);
 		const rep = computeDurations(history, new Date(), this.plugin.settings.week);
 		if (rep.untracked) {
