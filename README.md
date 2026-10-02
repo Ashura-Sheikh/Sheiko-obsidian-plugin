@@ -2,7 +2,7 @@
 
 An Obsidian plugin that works **alongside [TaskNotes](https://github.com/callumalpass/tasknotes)** to add task-lifecycle tracking and a daily auto-roll for unfinished tasks.
 
-> **Status: early release (v0.1.0), desktop only.** Plugin ID `sheiko-task-lifecycle`. Tested against TaskNotes **4.13.4**. Submitted to the [Obsidian Community directory](https://community.obsidian.md/plugins/sheiko-task-lifecycle) (review pending).
+> **Status: early release (v0.1.1), desktop only.** Plugin ID `sheiko-task-lifecycle`. Tested against TaskNotes **4.13.4**. Listed in the [Obsidian Community directory](https://community.obsidian.md/plugins/sheiko-task-lifecycle).
 
 ![The lifecycle window on a closed task: Context, Closure, and time per status split into working, overnight and weekend](docs/screenshots/lifecycle-window.png)
 
@@ -17,7 +17,7 @@ Sheiko edits your notes, so it starts switched off and stays cautious:
 - **Auto-roll is off by default.** Turn on *Dry run* first to see what it would change, then switch auto-roll on. Dry-run output goes to the developer console (Ctrl/Cmd+Shift+I) at the *Verbose* log level.
 - **Each batch run is capped** at 25 edited notes by default (*Max edits per run*). The rest are picked up on the next run.
 
-Once allowed, it writes to **task notes** (frontmatter: `completedDate`, `closedBy`, `timeToCloseMinutes`, `timeWorkingMinutes`, `timeOvernightMinutes`, `timeWeekendMinutes`, `closureSource`, `scheduled`, `rollCount`, `status`; sections: `## Context`, `## Status History`, `## Lifecycle Summary`) and, when auto-roll runs, to **that day's daily note** (`## 🔁 Rolled Over`, creating the note if it doesn't exist). It never sends data anywhere: no network use, no telemetry.
+Once allowed, it writes to **task notes** (frontmatter: `completedDate`, `closedBy`, `timeToCloseMinutes`, `timeWorkingMinutes`, `timeOvernightMinutes`, `timeWeekendMinutes`, `closureSource`, `scheduled`, `rollCount`, `status`; sections: `## Context`, `## Status History`, `## Lifecycle Summary`) and, when auto-roll runs, to **that day's daily note** (`## 🔁 Rolled Over`, creating the note if it doesn't exist). To find TaskNotes tasks it looks through the vault's Markdown files (Obsidian's directory lists this as "vault enumeration"), but it only edits task notes and the daily note. It never sends data anywhere: no network use, no telemetry.
 
 ## Getting started
 
@@ -106,11 +106,10 @@ Statuses and field names are read from TaskNotes' settings rather than hardcoded
 - Sheiko waits 600 ms after a change so TaskNotes can finish its own writes. That delay is a timing assumption.
 - Tested only against TaskNotes 4.13.4. A change to TaskNotes' frontmatter or settings shape could break Sheiko.
 - If a task's only recorded status change is the close itself, the Lifecycle Summary's *Time per status* table has no rows.
-- Settings don't yet appear in Obsidian 1.13's settings search.
 
 ## Support
 
-Best effort. Report issues on [GitHub](https://github.com/Ashura-Sheikh/Sheiko-obsidian-plugin/issues). No response-time guarantee. Tested on TaskNotes 4.13.4.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs and open pull requests. Best effort. Report issues on [GitHub](https://github.com/Ashura-Sheikh/Sheiko-obsidian-plugin/issues). No response-time guarantee. Tested on TaskNotes 4.13.4.
 
 ## Development
 

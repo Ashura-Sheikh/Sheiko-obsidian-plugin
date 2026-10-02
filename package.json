@@ -1,6 +1,6 @@
 {
 	"name": "sheiko-task-lifecycle",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Task lifecycle tracking and daily auto-roll alongside TaskNotes.",
 	"main": "main.js",
 	"type": "module",
