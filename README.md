@@ -1,8 +1,8 @@
-# Sheiko (working name)
+# Sheiko Task Lifecycle
 
 An Obsidian plugin that works **alongside [TaskNotes](https://github.com/callumalpass/tasknotes)** to add task-lifecycle tracking and a daily auto-roll for unfinished tasks.
 
-> **Status: in development, desktop only.** Temporary ID `sheiko-dev` / "Sheiko (dev)". The final name and ID haven't been chosen yet. Tested only against TaskNotes **4.13.4** in a dedicated test vault.
+> **Status: in development (v0.1.0), desktop only.** Plugin ID `sheiko-task-lifecycle`. Tested only against TaskNotes **4.13.4** in a dedicated test vault. Not published to the community plugin list.
 
 ## What it does
 
@@ -72,7 +72,9 @@ Statuses and field names are read from TaskNotes' settings rather than hardcoded
 - `npm run build` to type-check and run a production build
 - `npm run lint` for ESLint with the Obsidian plugin rules
 
-**Loading it in a dev vault:** symlink the repo into the vault, e.g. `<vault>/.obsidian/plugins/sheiko-dev → <repo>`, then enable "Sheiko (dev)" under Community plugins. To install manually instead, copy `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins/sheiko-dev/`.
+**Loading it in a dev vault:** symlink the repo into the vault as `<vault>/.obsidian/plugins/sheiko-task-lifecycle → <repo>` (the folder name must match the plugin ID), then enable "Sheiko Task Lifecycle" under Community plugins. To install manually instead, copy `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins/sheiko-task-lifecycle/`.
+
+**Naming note:** class names, CSS classes, notices ("Sheiko: …") and the `closureSource: sheiko` value written to task notes deliberately keep the short name "Sheiko". Changing `closureSource` would stop a reopen from clearing closure fields on tasks Sheiko had already closed.
 
 **Source layout (`src/`):** `main.ts` (plugin entry, commands, cutoff timer), `tracker.ts` (status-change detection, closure, startup catch-up), `lifecycle.ts` (history, time buckets, summary), `roll.ts` / `roller.ts` (auto-roll rules and engine), `tasknotes.ts` (reading TaskNotes' config), `settings.ts`, `ui/` (lifecycle and sign-off windows).
 

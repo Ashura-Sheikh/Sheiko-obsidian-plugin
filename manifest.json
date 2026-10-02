@@ -1,9 +1,9 @@
 {
-	"id": "sheiko-dev",
-	"name": "Sheiko (dev)",
-	"version": "1.0.0",
+	"id": "sheiko-task-lifecycle",
+	"name": "Sheiko Task Lifecycle",
+	"version": "0.1.0",
 	"minAppVersion": "1.4.4",
-	"description": "Task lifecycle tracking alongside TaskNotes: context log, status history, closure and time per status.",
+	"description": "Track task lifecycle alongside TaskNotes: context log, status history, time per status, sign-off prompts and daily auto-roll.",
 	"author": "Sheikh M Sahil",
 	"isDesktopOnly": true
 }
