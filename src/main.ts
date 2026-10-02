@@ -80,7 +80,9 @@ export default class SheikoPlugin extends Plugin {
 
 		this.app.workspace.onLayoutReady(() => {
 			if (!this.taskNotes.found) {
-				new Notice('Sheiko: TaskNotes settings not found. Using default statuses.');
+				// Without TaskNotes, Sheiko does nothing: no tracking, no auto-roll, no prompts.
+				new Notice('Sheiko: TaskNotes isn\'t installed and enabled, so Sheiko is doing nothing. Reload Obsidian after enabling it.');
+				return;
 			}
 			void this.tracker.reconcile().then(() => this.checkCutoff());
 		});
@@ -111,6 +113,7 @@ export default class SheikoPlugin extends Plugin {
 
 	tasksAwaitingSignoff(): TFile[] {
 		const review = this.settings.reviewStatus;
+		if (!review || !this.taskNotes.found) return [];
 		return this.app.vault
 			.getMarkdownFiles()
 			.filter((f) => isTaskFile(this.app, f, this.taskNotes) && statusOf(this.app, f, this.taskNotes) === review);

@@ -147,7 +147,8 @@ export function appendToSection(content: string, heading: string, line: string):
 
 export function formatContextLine(at: Date, who: string, text: string): string {
 	const single = text.trim().replace(/\s*\n\s*/g, ' ');
-	return `- **${toLocalIso(at)} — ${who}:** ${single}`;
+	const by = who.trim() ? ` — ${who.trim()}` : '';
+	return `- **${toLocalIso(at)}${by}:** ${single}`;
 }
 
 // ---------- Time buckets ----------

@@ -26,8 +26,9 @@ export class Roller {
 		const { app } = this.plugin;
 		const s = this.plugin.settings;
 		const tracker = this.plugin.tracker;
-		if (!tracker.writesAllowed()) {
-			new Notice('Sheiko: writes are not allowed in this vault (see Sheiko settings → Safety).');
+		const blocked = tracker.blockedReason();
+		if (blocked) {
+			new Notice(blocked);
 			return null;
 		}
 		if (this.running) return null;
@@ -72,7 +73,7 @@ export class Roller {
 				const rollCount = (typeof prevCount === 'number' ? prevCount : 0) + 1;
 				const history = parseHistory(await app.vault.read(file));
 				const last = history[history.length - 1];
-				const inReview = status === s.reviewStatus;
+				const inReview = s.reviewStatus !== '' && status === s.reviewStatus;
 				report.rolled.push({
 					path: file.path,
 					name: file.basename,

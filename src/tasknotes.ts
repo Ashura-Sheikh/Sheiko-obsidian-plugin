@@ -77,12 +77,20 @@ interface RawTaskNotesData {
 
 const str = (v: unknown, fallback: string): string => (typeof v === 'string' && v.length > 0 ? v : fallback);
 
-/** Reads `.obsidian/plugins/tasknotes/{data,manifest}.json` from disk. */
+/**
+ * Reads `.obsidian/plugins/tasknotes/{data,manifest}.json` from disk.
+ * `found` is true only when TaskNotes is installed AND enabled (listed in
+ * `community-plugins.json`). When it's false, Sheiko does nothing.
+ */
 export async function loadTaskNotesConfig(app: App): Promise<TaskNotesConfig> {
 	const dir = normalizePath(`${app.vault.configDir}/plugins/tasknotes`);
 	const adapter = app.vault.adapter;
 	try {
 		if (!(await adapter.exists(`${dir}/data.json`))) return FALLBACK;
+		const enabledPath = normalizePath(`${app.vault.configDir}/community-plugins.json`);
+		if (!(await adapter.exists(enabledPath))) return FALLBACK;
+		const enabled: unknown = JSON.parse(await adapter.read(enabledPath));
+		if (!Array.isArray(enabled) || !enabled.includes('tasknotes')) return FALLBACK;
 		const raw = JSON.parse(await adapter.read(`${dir}/data.json`)) as RawTaskNotesData;
 		let version: string | null = null;
 		if (await adapter.exists(`${dir}/manifest.json`)) {

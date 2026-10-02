@@ -68,9 +68,18 @@ export class Tracker {
 		return this.plugin.taskNotes;
 	}
 
-	writesAllowed(): boolean {
+	/** Why Sheiko won't write right now, or null if it can. */
+	blockedReason(): string | null {
+		if (!this.cfg.found) return 'Sheiko: TaskNotes isn\'t installed and enabled, so Sheiko does nothing. Reload Obsidian after enabling it.';
 		const base = vaultBasePath(this.plugin.app);
-		return base !== null && this.plugin.settings.allowedVaults.includes(base);
+		if (base === null || !this.plugin.settings.allowedVaults.includes(base)) {
+			return 'Sheiko: writes are not allowed in this vault (see Sheiko settings, Safety).';
+		}
+		return null;
+	}
+
+	writesAllowed(): boolean {
+		return this.blockedReason() === null;
 	}
 
 	get isReady(): boolean {
@@ -90,7 +99,7 @@ export class Tracker {
 	async reconcile(): Promise<void> {
 		this.stop();
 		if (!this.writesAllowed()) {
-			console.debug('[Sheiko] Writes not allowed in this vault; tracking is off.');
+			console.debug(`[Sheiko] Tracking is off: ${this.blockedReason() ?? ''}`);
 			return;
 		}
 		const { app } = this.plugin;
@@ -201,7 +210,7 @@ export class Tracker {
 		const forward = (target: string): boolean =>
 			hasStatus(this.cfg, target) && status !== target && orderOf(this.cfg, status) < orderOf(this.cfg, target);
 		// Checklist first: if both happen at once, review wins.
-		if (s.autoStageChecklist && doneNow === true && wasDone === false && forward(s.reviewStatus)) {
+		if (s.reviewStatus && s.autoStageChecklist && doneNow === true && wasDone === false && forward(s.reviewStatus)) {
 			void this.setStatus(file, s.reviewStatus, 'auto: all boxes ticked');
 			return;
 		}
@@ -216,8 +225,9 @@ export class Tracker {
 	 * and summary behave exactly as if the user had changed it; `note` goes on the history line.
 	 */
 	async setStatus(file: TFile, to: string, note: string): Promise<boolean> {
-		if (!this.writesAllowed()) {
-			new Notice('Sheiko: writes are not allowed in this vault (see Sheiko settings → Safety).');
+		const blocked = this.blockedReason();
+		if (blocked) {
+			new Notice(blocked);
 			return false;
 		}
 		if (this.plugin.settings.dryRun) {
@@ -289,7 +299,8 @@ export class Tracker {
 				const after = await this.applyClosure(file, t.at);
 				await this.writeSummary(file, after);
 			} else if (was && !now) await this.applyReopen(file);
-			if (t.to === this.plugin.settings.reviewStatus && this.plugin.settings.promptOnReview) {
+			const review = this.plugin.settings.reviewStatus;
+			if (review && t.to === review && this.plugin.settings.promptOnReview) {
 				this.plugin.promptSignoff([file], 'review');
 			}
 		}
@@ -325,7 +336,7 @@ export class Tracker {
 				fm[f.completedDate] = toLocalIso(at);
 				wrote = true;
 			}
-			if (fm[FIELD.closedBy] === undefined || fm[FIELD.closedBy] === '') {
+			if (identity && (fm[FIELD.closedBy] === undefined || fm[FIELD.closedBy] === '')) {
 				fm[FIELD.closedBy] = identity;
 				wrote = true;
 			}
@@ -380,8 +391,9 @@ export class Tracker {
 	 * otherwise they run to now.
 	 */
 	async writeSummary(file: TFile, fmOverride?: FM): Promise<boolean> {
-		if (!this.writesAllowed()) {
-			new Notice('Sheiko: writes are not allowed in this vault (see Sheiko settings → Safety).');
+		const blocked = this.blockedReason();
+		if (blocked) {
+			new Notice(blocked);
 			return false;
 		}
 		const { app } = this.plugin;
@@ -418,8 +430,9 @@ export class Tracker {
 
 	/** Context entries (append-only). */
 	async addContext(file: TFile, line: string): Promise<boolean> {
-		if (!this.writesAllowed()) {
-			new Notice('Sheiko: writes are not allowed in this vault (see Sheiko settings → Safety).');
+		const blocked = this.blockedReason();
+		if (blocked) {
+			new Notice(blocked);
 			return false;
 		}
 		if (this.plugin.settings.dryRun) {

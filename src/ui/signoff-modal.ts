@@ -65,7 +65,7 @@ export class SignoffModal extends Modal {
 						.setButtonText('Approve and close')
 						.setCta()
 						.onClick(async () => {
-							if (await this.plugin.tracker.setStatus(file, s.doneStatus, `signed off by ${s.identity}`)) this.done(file);
+							if (await this.plugin.tracker.setStatus(file, s.doneStatus, s.identity ? `signed off by ${s.identity}` : 'signed off')) this.done(file);
 						}),
 				);
 		}

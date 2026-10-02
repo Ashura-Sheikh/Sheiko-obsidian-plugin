@@ -3,7 +3,7 @@ import type SheikoPlugin from './main';
 import { DEFAULT_WEEK, WeekSchedule } from './lifecycle';
 
 export interface SheikoSettings {
-	/** Written as `closedBy` and in Context entries. */
+	/** Written as `closedBy` and in Context entries. Blank = no `closedBy` is written. */
 	identity: string;
 	/** Per weekday (0 = Sunday), start/end of working hours. End is also the roll cutoff (Phase 3). */
 	week: WeekSchedule;
@@ -32,19 +32,19 @@ export interface SheikoSettings {
 }
 
 export const DEFAULT_SETTINGS: SheikoSettings = {
-	identity: 'sheikh',
+	identity: '',
 	week: DEFAULT_WEEK.map((d) => ({ ...d })),
 	allowedVaults: [],
 	dryRun: false,
 	maxEditsPerRun: 25,
 	progressStatus: 'in-progress',
-	reviewStatus: 'in-review',
+	reviewStatus: '',
 	doneStatus: 'done',
 	autoStageTimer: true,
 	autoStageChecklist: true,
 	promptOnReview: true,
 	promptAtCutoff: true,
-	autoRoll: true,
+	autoRoll: false,
 };
 
 export interface PluginData {
@@ -126,26 +126,28 @@ export class SheikoSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('You').setHeading();
 		new Setting(containerEl)
 			.setName('Your identity')
-			.setDesc('Written as closedBy and on Context entries you add.')
+			.setDesc('Written as closedBy when Sheiko records a close, and on Context entries you add. Leave blank and closedBy isn\'t written.')
 			.addText((t) =>
-				t.setValue(s.identity).onChange(async (v) => {
-					if (v.trim()) {
+				t
+					.setPlaceholder('Your name')
+					.setValue(s.identity)
+					.onChange(async (v) => {
 						s.identity = v.trim();
 						await this.plugin.saveSettings();
-					}
-				}),
+					}),
 			);
 
 		// ---- Stages & sign-off (Phase 2) ----
 		new Setting(containerEl).setName('Stages and sign-off').setHeading();
 		const statuses = this.plugin.taskNotes.statuses;
-		const pick = (name: string, desc: string, key: 'progressStatus' | 'reviewStatus' | 'doneStatus', onlyCompleted: boolean): void => {
+		const pick = (name: string, desc: string, key: 'progressStatus' | 'reviewStatus' | 'doneStatus', onlyCompleted: boolean, allowNone = false): void => {
 			new Setting(containerEl)
 				.setName(name)
 				.setDesc(desc)
 				.addDropdown((d) => {
+					if (allowNone) d.addOption('', 'Not set (sign-off off)');
 					for (const st of statuses) if (st.isCompleted === onlyCompleted) d.addOption(st.value, st.label);
-					if (!statuses.some((st) => st.value === s[key])) d.addOption(s[key], `${s[key]} (not in TaskNotes)`);
+					if (s[key] && !statuses.some((st) => st.value === s[key])) d.addOption(s[key], `${s[key]} (not in TaskNotes)`);
 					d.setValue(s[key]).onChange(async (v) => {
 						s[key] = v;
 						await this.plugin.saveSettings();
@@ -153,7 +155,13 @@ export class SheikoSettingTab extends PluginSettingTab {
 				});
 		};
 		pick('Working status', 'Where a task moves when its timer starts.', 'progressStatus', false);
-		pick('Review status', 'Where a task moves when every checkbox is ticked. Tasks here wait for sign-off.', 'reviewStatus', false);
+		pick(
+			'Review status',
+			'Where a task moves when every checkbox is ticked. Tasks here wait for sign-off. While this isn\'t set, the checkbox move and both sign-off prompts are off.',
+			'reviewStatus',
+			false,
+			true,
+		);
 		pick('Done status', 'What "Approve and close" in the sign-off prompt sets.', 'doneStatus', true);
 		const toggle = (name: string, desc: string, key: 'autoStageTimer' | 'autoStageChecklist' | 'promptOnReview' | 'promptAtCutoff'): void => {
 			new Setting(containerEl)
@@ -177,7 +185,7 @@ export class SheikoSettingTab extends PluginSettingTab {
 			.setName('Roll unfinished tasks at the end of each day')
 			.setDesc(
 				'At each day\'s end time (weekends included), unfinished tasks scheduled for that day or earlier move to the next day. ' +
-					'Only the scheduled date moves; due never changes. Each roll is noted in the task and in that day\'s daily note.',
+					'Only the scheduled date moves; due never changes. Each roll is noted in the task and in that day\'s daily note. Off by default: try dry run first.',
 			)
 			.addToggle((t) =>
 				t.setValue(s.autoRoll).onChange(async (v) => {
