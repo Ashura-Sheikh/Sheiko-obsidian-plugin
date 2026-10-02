@@ -14,6 +14,10 @@ export default defineConfig(
 		'package.json',
 		'package-lock.json',
 		'tsconfig.json',
+		'tsconfig.test.json',
+		// Tests aren't shipped; they're type-checked by `npm test` (tsconfig.test.json).
+		'test',
+		'test-dist',
 	]),
 	{
 		languageOptions: {

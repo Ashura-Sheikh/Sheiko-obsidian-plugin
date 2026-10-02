@@ -23,3 +23,6 @@ data.json
 
 # Obsidian vault config (repo folder was opened as a vault once)
 .obsidian/
+
+# test build output
+test-dist/
