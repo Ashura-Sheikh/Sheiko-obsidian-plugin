@@ -11,7 +11,7 @@ export interface SheikoSettings {
 	allowedVaults: string[];
 	/** Log intended writes instead of making them. */
 	dryRun: boolean;
-	/** Cap on files edited by one batch run (startup reconcile, and auto-roll later). */
+	/** Cap on files edited by one batch run (startup catch-up and auto-roll). */
 	maxEditsPerRun: number;
 	// ---- Phase 2 ----
 	/** TaskNotes status values Sheiko moves tasks to / prompts on. */
@@ -111,7 +111,7 @@ export class SheikoSettingTab extends PluginSettingTab {
 			);
 		new Setting(containerEl)
 			.setName('Max edits per run')
-			.setDesc('Batch runs (the startup catch-up, and auto-roll later) stop after this many notes.')
+			.setDesc('Batch runs (the startup catch-up and auto-roll) stop after this many notes. The rest are picked up on the next run.')
 			.addText((t) =>
 				t.setValue(String(s.maxEditsPerRun)).onChange(async (v) => {
 					const n = Number(v);
