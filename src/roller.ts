@@ -11,6 +11,14 @@ export const ROLL_COUNT = 'rollCount';
 /** A cutoff acted on more than this long after it passed counts as a catch-up. */
 const CATCH_UP_MS = 5 * 60 * 1000;
 
+/**
+ * Obsidian's `moment` is typed as a namespace import of the moment package, which is
+ * only callable when `esModuleInterop` is off. The directory's scanner type-checks with
+ * it on and flagged the call as unsafe, so we call it through this narrow type instead.
+ * Same function at runtime.
+ */
+const formatDate = moment as unknown as (date: Date) => { format: (format: string) => string };
+
 type FM = Record<string, unknown>;
 
 export class Roller {
@@ -152,7 +160,7 @@ export class Roller {
 		} catch (e) {
 			console.error('[Sheiko] Could not read Daily Notes settings, using defaults', e);
 		}
-		const name = moment(day).format(format);
+		const name = formatDate(day).format(format);
 		return normalizePath(folder ? `${folder}/${name}.md` : `${name}.md`);
 	}
 }
