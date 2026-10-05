@@ -2,7 +2,7 @@
 
 import { Notice, TFile, moment, normalizePath } from 'obsidian';
 import type SheikoPlugin from './main';
-import { CONTEXT_HEADING, appendToSection, formatContextLine, localDateString, minutesBetween, parseHistory, sectionLines } from './lifecycle';
+import { CONTEXT_HEADING, appendToSection, formatContextLine, isContextEntry, localDateString, minutesBetween, parseHistory, sectionLines } from './lifecycle';
 import { RollReport, buildRollBlock, contextLineText, parseScheduled, rollTarget } from './roll';
 import { isCompletedStatus, isTaskFile, labelFor, statusOf, tagList } from './tasknotes';
 
@@ -105,7 +105,7 @@ export class Roller {
 						f[cfg.field.scheduled] = to;
 						f[ROLL_COUNT] = rollCount;
 					});
-					await app.vault.process(file, (c) => appendToSection(c, CONTEXT_HEADING, line));
+					await app.vault.process(file, (c) => appendToSection(c, CONTEXT_HEADING, line, isContextEntry));
 				}
 				edits++;
 			}

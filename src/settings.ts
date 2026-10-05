@@ -27,6 +27,12 @@ export interface SheikoSettings {
 	promptOnReview: boolean;
 	/** Prompt at the daily cutoff for everything still in reviewStatus. */
 	promptAtCutoff: boolean;
+	/** Frontmatter field naming who worked on a task, shown in the sign-off window. */
+	workerField: string;
+	/** Names in workerField that are AI agents (case-insensitive). Any other name shows as human. */
+	agentNames: string[];
+	/** Show "N awaiting sign-off" in the status bar. */
+	statusBarCount: boolean;
 	// ---- Phase 3 ----
 	/** At each day's end time, roll unfinished tasks' `scheduled` to the next day. */
 	autoRoll: boolean;
@@ -45,6 +51,9 @@ export const DEFAULT_SETTINGS: SheikoSettings = {
 	autoStageChecklist: true,
 	promptOnReview: true,
 	promptAtCutoff: true,
+	workerField: 'assignedTo',
+	agentNames: [],
+	statusBarCount: true,
 	autoRoll: false,
 };
 
@@ -275,6 +284,59 @@ export class SheikoSettingTab extends PluginSettingTab {
 						name: 'Prompt for sign-off at the daily cutoff',
 						desc: () => "At each day's end time, ask about every task still waiting in review.",
 						render: toggle('promptAtCutoff'),
+					},
+					{
+						name: 'Show sign-off count in the status bar',
+						desc: () => 'Shows how many tasks are waiting in review. Click it to open the sign-off window. Hidden when nothing is waiting.',
+						render: (setting) => {
+							setting.addToggle((t) =>
+								t.setValue(s.statusBarCount).onChange(async (v) => {
+									s.statusBarCount = v;
+									await this.plugin.saveSettings();
+									this.plugin.refreshStatusBar();
+								}),
+							);
+						},
+					},
+				],
+			},
+			{
+				heading: 'Who worked on it',
+				rows: [
+					{
+						name: 'Worker field',
+						desc: () =>
+							'Frontmatter field naming who worked on a task, shown in the sign-off window. A task with nothing in this field shows "Worker: not recorded".',
+						render: (setting) => {
+							setting.addText((t) =>
+								t
+									.setPlaceholder('assignedTo')
+									.setValue(s.workerField)
+									.onChange(async (v) => {
+										s.workerField = v.trim() || DEFAULT_SETTINGS.workerField;
+										await this.plugin.saveSettings();
+									}),
+							);
+						},
+					},
+					{
+						name: 'AI agent names',
+						desc: () =>
+							'Comma-separated. A worker with one of these names shows as an AI agent; any other name shows as human. Not case-sensitive.',
+						render: (setting) => {
+							setting.addTextArea((t) =>
+								t
+									.setPlaceholder('Agent names, separated by commas')
+									.setValue(s.agentNames.join(', '))
+									.onChange(async (v) => {
+										s.agentNames = v
+											.split(',')
+											.map((x) => x.trim())
+											.filter(Boolean);
+										await this.plugin.saveSettings();
+									}),
+							);
+						},
 					},
 				],
 			},

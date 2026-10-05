@@ -1,17 +1,26 @@
 import { App, Modal, Setting, TFile } from 'obsidian';
 import type SheikoPlugin from '../main';
+import { formatMinutes, parseHistory, toLocalIso } from '../lifecycle';
+import { SENT_BACK_NOTE, classifyWorker, computeFacts, describeTask, latestContext, workerLabel } from '../review';
 import { labelFor } from '../tasknotes';
 
-export type SignoffReason = 'review' | 'cutoff';
+export type SignoffReason = 'review' | 'cutoff' | 'manual';
+
+/** Above this many tasks, cards start folded so the window stays short. */
+const FOLD_ABOVE = 3;
 
 /**
  * Sign-off prompt. Closing stays the user's decision: nothing is closed unless
  * "Approve and close" is clicked. One window at a time; new prompts are added to it.
+ * Each task shows who worked on it, a short summary and a facts line, all read
+ * locally from the note.
  */
 export class SignoffModal extends Modal {
 	private plugin: SheikoPlugin;
 	private files: TFile[] = [];
 	private reason: SignoffReason;
+	/** Guards against overlapping async renders writing into the same container. */
+	private renderToken = 0;
 
 	constructor(app: App, plugin: SheikoPlugin, reason: SignoffReason) {
 		super(app);
@@ -21,60 +30,111 @@ export class SignoffModal extends Modal {
 
 	add(files: TFile[]): void {
 		for (const f of files) if (!this.files.some((x) => x.path === f.path)) this.files.push(f);
-		this.render();
+		void this.render();
 	}
 
 	onOpen(): void {
-		this.render();
+		void this.render();
 	}
 
 	onClose(): void {
+		this.renderToken++;
 		this.contentEl.empty();
 		this.plugin.signoffClosed(this);
 	}
 
-	private render(): void {
+	private intro(): string {
+		if (this.reason === 'cutoff') return 'End of day. These tasks are still waiting for sign-off.';
+		if (this.reason === 'manual') return this.files.length === 1 ? 'This task is waiting for sign-off.' : 'These tasks are waiting for sign-off.';
+		return this.files.length === 1
+			? 'This task has moved to review and is waiting for sign-off.'
+			: 'These tasks have moved to review and are waiting for sign-off.';
+	}
+
+	private async render(): Promise<void> {
+		const token = ++this.renderToken;
+		const files = [...this.files];
+		// Read every note before touching the DOM, so a newer render can't interleave with this one.
+		const contents = await Promise.all(files.map((f) => this.app.vault.cachedRead(f).catch(() => '')));
+		if (token !== this.renderToken) return;
+
 		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.addClass('sheiko-modal', 'sheiko-signoff');
+		this.titleEl.setText(files.length === 1 ? 'Sign-off needed' : `Sign-off needed: ${files.length} tasks`);
+		contentEl.createEl('p', { cls: 'sheiko-muted', text: this.intro() });
+		files.forEach((file, i) => this.renderCard(contentEl, file, contents[i] ?? '', files.length > FOLD_ABOVE));
+		new Setting(contentEl)
+			.setDesc('Tasks left for later stay in the status bar count. Click it to come back here.')
+			.addButton((b) => b.setButtonText('Later').onClick(() => this.close()));
+	}
+
+	private renderCard(parent: HTMLElement, file: TFile, content: string, folded: boolean): void {
 		const s = this.plugin.settings;
 		const cfg = this.plugin.taskNotes;
-		contentEl.empty();
-		contentEl.addClass('sheiko-modal');
-		this.titleEl.setText(this.files.length === 1 ? 'Sign-off needed' : `Sign-off needed: ${this.files.length} tasks`);
-		contentEl.createEl('p', {
-			cls: 'sheiko-muted',
-			text:
-				this.reason === 'cutoff'
-					? 'End of day. These tasks are still waiting for sign-off.'
-					: 'This task has moved to review and is waiting for sign-off.',
-		});
-		for (const file of [...this.files]) {
-			new Setting(contentEl)
-				.setName(file.basename)
-				.addButton((b) =>
-					b.setButtonText('Open').onClick(() => {
-						void this.app.workspace.getLeaf(false).openFile(file);
+		const cache = this.app.metadataCache.getFileCache(file);
+		const fm: Record<string, unknown> = cache?.frontmatter ?? {};
+		const card = parent.createDiv({ cls: 'sheiko-card' });
+
+		const worker = classifyWorker(fm[s.workerField], s.agentNames);
+		const head = new Setting(card).setName(file.basename);
+		head.nameEl.createSpan({ cls: `sheiko-worker sheiko-worker-${worker.kind}`, text: workerLabel(worker) });
+		head
+			.addButton((b) =>
+				b.setButtonText('Open').onClick(() => {
+					void this.app.workspace.getLeaf(false).openFile(file);
+				}),
+			)
+			.addButton((b) =>
+				b.setButtonText(`Send back to ${labelFor(cfg, s.progressStatus)}`).onClick(async () => {
+					if (await this.plugin.tracker.setStatus(file, s.progressStatus, SENT_BACK_NOTE)) this.done(file);
+				}),
+			)
+			.addButton((b) =>
+				b
+					.setButtonText('Approve and close')
+					.setCta()
+					.onClick(async () => {
+						if (await this.plugin.tracker.setStatus(file, s.doneStatus, s.identity ? `signed off by ${s.identity}` : 'signed off')) this.done(file);
 					}),
-				)
-				.addButton((b) =>
-					b.setButtonText(`Send back to ${labelFor(cfg, s.progressStatus)}`).onClick(async () => {
-						if (await this.plugin.tracker.setStatus(file, s.progressStatus, 'sent back at sign-off')) this.done(file);
-					}),
-				)
-				.addButton((b) =>
-					b
-						.setButtonText('Approve and close')
-						.setCta()
-						.onClick(async () => {
-							if (await this.plugin.tracker.setStatus(file, s.doneStatus, s.identity ? `signed off by ${s.identity}` : 'signed off')) this.done(file);
-						}),
-				);
+			);
+
+		const details = card.createEl('details', { cls: 'sheiko-card-details' });
+		details.open = !folded;
+		details.createEl('summary', { text: 'Summary and context' });
+
+		const desc = describeTask(content);
+		details.createEl('p', { cls: desc ? '' : 'sheiko-muted', text: desc || 'No description in the note.' });
+
+		const ctx = latestContext(content);
+		if (ctx) {
+			const p = details.createEl('p', { cls: 'sheiko-latest-context' });
+			p.createEl('strong', { text: `Latest context${ctx.who ? ` (${ctx.who})` : ''}: ` });
+			p.appendText(ctx.text);
 		}
-		new Setting(contentEl).addButton((b) => b.setButtonText('Later').onClick(() => this.close()));
+
+		const boxes = (cache?.listItems ?? []).filter((li) => typeof li.task === 'string');
+		const facts = computeFacts({
+			history: parseHistory(content),
+			now: new Date(),
+			schedule: s.week,
+			progressStatus: s.progressStatus,
+			reviewStatus: s.reviewStatus,
+			checklist: boxes.length ? { done: boxes.filter((li) => li.task !== ' ').length, total: boxes.length } : null,
+			due: fm[cfg.field.due],
+		});
+		const parts: string[] = [];
+		if (facts.progressMinutes !== null) parts.push(`${labelFor(cfg, s.progressStatus)}: ${formatMinutes(facts.progressMinutes)}`);
+		if (facts.inReviewSince) parts.push(`In review since ${toLocalIso(facts.inReviewSince).slice(0, 16).replace('T', ' ')}`);
+		if (facts.checklist) parts.push(`Checklist ${facts.checklist.done}/${facts.checklist.total}`);
+		if (facts.due) parts.push(`${facts.overdue ? '⚠️ Overdue' : 'Due'} ${facts.due.replace('T', ' ')}`);
+		if (facts.sentBack > 0) parts.push(`Sent back ${facts.sentBack}×`);
+		if (parts.length) details.createEl('p', { cls: 'sheiko-muted sheiko-facts', text: parts.join(' · ') });
 	}
 
 	private done(file: TFile): void {
 		this.files = this.files.filter((f) => f.path !== file.path);
 		if (this.files.length === 0) this.close();
-		else this.render();
+		else void this.render();
 	}
 }

@@ -19,6 +19,8 @@ import {
 	appendToSection,
 	buildSummary,
 	checklistComplete,
+	isContextEntry,
+	isHistoryEntry,
 	isTimerRunning,
 	parseHistory,
 	replaceSection,
@@ -315,7 +317,7 @@ export class Tracker {
 			return;
 		}
 		await this.plugin.app.vault.process(file, (content) =>
-			lines.reduce((c, l) => appendToSection(c, HISTORY_HEADING, l), content),
+			lines.reduce((c, l) => appendToSection(c, HISTORY_HEADING, l, isHistoryEntry), content),
 		);
 	}
 
@@ -440,7 +442,7 @@ export class Tracker {
 			new Notice('Sheiko dry run: context not written (see console).');
 			return false;
 		}
-		await this.plugin.app.vault.process(file, (c) => appendToSection(c, CONTEXT_HEADING, line));
+		await this.plugin.app.vault.process(file, (c) => appendToSection(c, CONTEXT_HEADING, line, isContextEntry));
 		return true;
 	}
 }

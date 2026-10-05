@@ -115,11 +115,23 @@ export function parseHistory(body: string): Transition[] {
 		.sort((a, b) => a.at.getTime() - b.at.getTime());
 }
 
+/** A Status History entry line, as Sheiko writes it. */
+export const isHistoryEntry = (line: string): boolean => parseTransition(line) !== null;
+
+/** A Context entry line, as Sheiko writes it (`- **{timestamp}…:** …`, always one line). */
+export const isContextEntry = (line: string): boolean => /^- \*\*\d{4}-\d{2}-\d{2}T[^*]*:\*\* /.test(line.trim());
+
 /**
- * Appends `line` to the end of the `heading` section (creating the section at the end
- * of the file if missing). Never rewrites or removes existing lines.
+ * Appends `line` to the `heading` section (creating the section at the end of the
+ * file if missing). Never rewrites or removes existing lines.
+ *
+ * With `isEntry`: the line goes straight after the section's last entry, so text the
+ * user typed under the heading (e.g. a description typed below `## Status History`
+ * on a new task) stays below the entries instead of being interleaved with them.
+ * If the section has no entries yet, the line goes directly under the heading.
+ * Without `isEntry`: after the last non-blank line of the section.
  */
-export function appendToSection(content: string, heading: string, line: string): string {
+export function appendToSection(content: string, heading: string, line: string, isEntry?: (l: string) => boolean): string {
 	const lines = content.split('\n');
 	const start = lines.findIndex((l) => l.trim() === heading);
 	if (start === -1) {
@@ -131,6 +143,21 @@ export function appendToSection(content: string, heading: string, line: string):
 		if (/^##\s/.test(lines[i] ?? '')) {
 			end = i;
 			break;
+		}
+	}
+	if (isEntry) {
+		let lastEntry = -1;
+		for (let i = start + 1; i < end; i++) if (isEntry(lines[i] ?? '')) lastEntry = i;
+		if (lastEntry !== -1) {
+			lines.splice(lastEntry + 1, 0, line);
+			return lines.join('\n');
+		}
+		// No entries yet: directly under the heading, a blank line either side.
+		let firstText = start + 1;
+		while (firstText < end && (lines[firstText] ?? '').trim() === '') firstText++;
+		if (firstText < end) {
+			lines.splice(start + 1, firstText - (start + 1), '', line, '');
+			return lines.join('\n');
 		}
 	}
 	// Insert after the last non-blank line of the section.

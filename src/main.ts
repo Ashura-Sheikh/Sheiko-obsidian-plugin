@@ -15,6 +15,8 @@ export default class SheikoPlugin extends Plugin {
 	tracker!: Tracker;
 	roller!: Roller;
 	private signoff: SignoffModal | null = null;
+	private statusBarEl: HTMLElement | null = null;
+	private statusBarTimer: number | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
@@ -53,7 +55,7 @@ export default class SheikoPlugin extends Plugin {
 			callback: () => {
 				const files = this.tasksAwaitingSignoff();
 				if (files.length === 0) new Notice('Sheiko: nothing is waiting for sign-off.');
-				else this.promptSignoff(files, 'review');
+				else this.promptSignoff(files, 'manual');
 			},
 		});
 		this.addCommand({
@@ -72,9 +74,35 @@ export default class SheikoPlugin extends Plugin {
 			else new Notice('Sheiko: open a TaskNotes task first.');
 		});
 
-		this.registerEvent(this.app.metadataCache.on('changed', (file) => this.tracker.onMetadataChanged(file)));
-		this.registerEvent(this.app.vault.on('rename', (file, oldPath) => this.tracker.onRename(file, oldPath)));
-		this.registerEvent(this.app.vault.on('delete', (file) => this.tracker.onDelete(file)));
+		// Status bar: "⭐ N awaiting sign-off". Click to open the sign-off window (the way back to tasks left with "Later").
+		this.statusBarEl = this.addStatusBarItem();
+		this.statusBarEl.addClass('sheiko-statusbar', 'mod-clickable');
+		this.statusBarEl.setAttr('aria-label', 'Sheiko: open tasks waiting for sign-off');
+		this.statusBarEl.hide();
+		this.registerDomEvent(this.statusBarEl, 'click', () => {
+			const files = this.tasksAwaitingSignoff();
+			if (files.length === 0) new Notice('Sheiko: nothing is waiting for sign-off.');
+			else this.promptSignoff(files, 'manual');
+		});
+
+		this.registerEvent(
+			this.app.metadataCache.on('changed', (file) => {
+				this.tracker.onMetadataChanged(file);
+				this.scheduleStatusBar();
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => {
+				this.tracker.onRename(file, oldPath);
+				this.scheduleStatusBar();
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on('delete', (file) => {
+				this.tracker.onDelete(file);
+				this.scheduleStatusBar();
+			}),
+		);
 
 		this.app.workspace.onLayoutReady(() => {
 			if (!this.taskNotes.found) {
@@ -82,6 +110,7 @@ export default class SheikoPlugin extends Plugin {
 				new Notice('Sheiko: TaskNotes isn\'t installed and enabled, so Sheiko is doing nothing. Reload Obsidian after enabling it.');
 				return;
 			}
+			this.refreshStatusBar();
 			void this.tracker.reconcile().then(() => this.checkCutoff());
 		});
 		// Daily cutoff check (each weekday's end time). Also runs once at startup, above.
@@ -90,6 +119,30 @@ export default class SheikoPlugin extends Plugin {
 
 	onunload(): void {
 		this.tracker?.stop();
+		if (this.statusBarTimer !== null) window.clearTimeout(this.statusBarTimer);
+	}
+
+	// ---------- Status bar ----------
+
+	/** Debounced: metadata 'changed' fires once per edited file, and the count scans every task. */
+	private scheduleStatusBar(): void {
+		if (this.statusBarTimer !== null) window.clearTimeout(this.statusBarTimer);
+		this.statusBarTimer = window.setTimeout(() => {
+			this.statusBarTimer = null;
+			this.refreshStatusBar();
+		}, 500);
+	}
+
+	refreshStatusBar(): void {
+		const el = this.statusBarEl;
+		if (!el) return;
+		const n = this.settings.statusBarCount ? this.tasksAwaitingSignoff().length : 0;
+		if (n === 0) {
+			el.hide();
+			return;
+		}
+		el.setText(`⭐ ${n} awaiting sign-off`);
+		el.show();
 	}
 
 	// ---------- Phase 2: sign-off ----------
