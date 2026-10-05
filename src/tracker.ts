@@ -295,6 +295,7 @@ export class Tracker {
 		await this.appendHistory(file, list);
 		for (const t of list) {
 			if (t.kind !== 'live' || t.from === null) continue;
+			this.plugin.slots?.onTransition(file, t);
 			const was = isCompletedStatus(this.cfg, t.from);
 			const now = isCompletedStatus(this.cfg, t.to);
 			if (!was && now) {

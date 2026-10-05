@@ -1,6 +1,6 @@
 import { App, Modal, Setting, TFile } from 'obsidian';
 import type SheikoPlugin from '../main';
-import { formatMinutes, parseHistory, toLocalIso } from '../lifecycle';
+import { formatContextLine, formatMinutes, parseHistory, toLocalIso } from '../lifecycle';
 import { SENT_BACK_NOTE, classifyWorker, computeFacts, describeTask, latestContext, workerLabel } from '../review';
 import { labelFor } from '../tasknotes';
 
@@ -87,6 +87,7 @@ export class SignoffModal extends Modal {
 			)
 			.addButton((b) =>
 				b.setButtonText(`Send back to ${labelFor(cfg, s.progressStatus)}`).onClick(async () => {
+					if (!(await this.saveDraft(file))) return;
 					if (await this.plugin.tracker.setStatus(file, s.progressStatus, SENT_BACK_NOTE)) this.done(file);
 				}),
 			)
@@ -95,6 +96,7 @@ export class SignoffModal extends Modal {
 					.setButtonText('Approve and close')
 					.setCta()
 					.onClick(async () => {
+						if (!(await this.saveDraft(file))) return;
 						if (await this.plugin.tracker.setStatus(file, s.doneStatus, s.identity ? `signed off by ${s.identity}` : 'signed off')) this.done(file);
 					}),
 			);
@@ -130,6 +132,42 @@ export class SignoffModal extends Modal {
 		if (facts.due) parts.push(`${facts.overdue ? '⚠️ Overdue' : 'Due'} ${facts.due.replace('T', ' ')}`);
 		if (facts.sentBack > 0) parts.push(`Sent back ${facts.sentBack}×`);
 		if (parts.length) details.createEl('p', { cls: 'sheiko-muted sheiko-facts', text: parts.join(' · ') });
+
+		// Context box: always visible (outside the fold). The draft survives re-renders, and is
+		// saved before Approve / Send back so a note typed but not added isn't lost.
+		const drafts = this.plugin.signoffDrafts;
+		new Setting(card)
+			.setClass('sheiko-card-context')
+			.addTextArea((t) => {
+				t.setPlaceholder('Add context for this task…')
+					.setValue(drafts.get(file.path) ?? '')
+					.onChange((v) => {
+						if (v.trim()) drafts.set(file.path, v);
+						else drafts.delete(file.path);
+					});
+				t.inputEl.rows = 2;
+				t.inputEl.addClass('sheiko-context-input');
+			})
+			.addButton((b) =>
+				b.setButtonText('Add').onClick(async () => {
+					if (!drafts.get(file.path)?.trim()) return;
+					if (await this.saveDraft(file)) void this.render();
+				}),
+			);
+	}
+
+	/**
+	 * Writes this task's typed-but-unsaved context, if any. Returns false only if there
+	 * was a draft and it couldn't be written (writes blocked / dry run), so the caller
+	 * stops instead of changing status with the note silently dropped.
+	 */
+	private async saveDraft(file: TFile): Promise<boolean> {
+		const draft = this.plugin.signoffDrafts.get(file.path)?.trim();
+		if (!draft) return true;
+		const line = formatContextLine(new Date(), this.plugin.settings.identity, draft);
+		if (!(await this.plugin.tracker.addContext(file, line))) return false;
+		this.plugin.signoffDrafts.delete(file.path);
+		return true;
 	}
 
 	private done(file: TFile): void {

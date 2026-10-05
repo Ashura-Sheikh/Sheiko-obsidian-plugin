@@ -38,3 +38,6 @@
 .sheiko-signoff .sheiko-card-details summary { cursor: pointer; color: var(--text-muted); font-size: var(--font-ui-small); }
 .sheiko-signoff .sheiko-card-details p { margin: 0.4em 0; }
 .sheiko-statusbar { cursor: pointer; }
+.sheiko-signoff .sheiko-card-context { padding-top: 0; }
+.sheiko-signoff .sheiko-card-context .setting-item-info { display: none; }
+.sheiko-signoff .sheiko-card-context .setting-item-control { flex: 1; }

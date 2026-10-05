@@ -9,6 +9,7 @@ import { DEFAULT_SETTINGS, PluginData, SheikoSettings } from '../src/settings';
 import { TaskNotesConfig, loadTaskNotesConfig } from '../src/tasknotes';
 import { Tracker } from '../src/tracker';
 import { Roller } from '../src/roller';
+import { FocusSlots } from '../src/slots';
 import type SheikoPlugin from '../src/main';
 import type { TFile as RealTFile } from 'obsidian';
 
@@ -166,7 +167,7 @@ export class FakeVault {
 			allowedVaults: (opts.allowed ?? true) ? [VAULT] : [],
 			...(opts.settings ?? {}),
 		};
-		this.data = { settings, lastStatus: {}, unwitnessedCloses: [], lastCutoffRun: null };
+		this.data = { settings, lastStatus: {}, unwitnessedCloses: [], lastCutoffRun: null, activeSlot: null, lastScheduledSlot: null };
 	}
 
 	/** Typed as Obsidian's TFile so tests can pass it straight to src/ code. */
@@ -192,11 +193,19 @@ export class FakeVault {
 			taskNotes,
 			saveData: () => Promise.resolve(),
 			promptSignoff: (files: RealTFile[], reason: string) => {
+				// Same hold rule as the real plugin: automatic prompts are held during a slot.
+				if (reason !== 'manual' && plugin.slots.hold(files)) return;
 				self.prompts.push({ paths: files.map((f) => f.path), reason });
 			},
+			refreshStatusBar: () => undefined,
+			tasksAwaitingSignoff: () =>
+				[...self.notes.keys()]
+					.filter((p) => self.fm(p).status === self.data.settings.reviewStatus)
+					.map((p) => self.file(p)),
 		} as unknown as SheikoPlugin;
 		plugin.tracker = new Tracker(plugin);
 		plugin.roller = new Roller(plugin);
+		plugin.slots = new FocusSlots(plugin);
 		this.plugin = plugin;
 	}
 

@@ -1,0 +1,143 @@
+// v0.2.0: break / deep-work slots. Pure schedule/report logic, plus the real Tracker +
+// FocusSlots against the in-memory vault: prompts held during a slot, events logged,
+// report written to <report folder>/YYYY-MM-DD.md, held prompts shown at the end.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { FakeVault, runTimers } from './fake-vault';
+import { TOUCHED_CAVEAT, ActiveSlot, buildSlotReport, parseSlotSpec, reportPath, scheduledSlotAt, touch } from '../src/slot-logic';
+
+const WEEK = ['', '12:30-13:00 break, 14:00-15:30 deep work', '', '', '', '', ''];
+
+test('slot schedule: parses break / deep work, rejects bad entries without guessing', () => {
+	const r = parseSlotSpec('12:30-13:00 break, 14:00–15:30 Deep Work, 9:00-9:15, 25:00-26:00, 13:00-12:00, 10:00-11:00 nap');
+	assert.deepEqual(r.slots, [
+		{ start: '12:30', end: '13:00', kind: 'break' },
+		{ start: '14:00', end: '15:30', kind: 'deep-work' },
+		{ start: '9:00', end: '9:15', kind: 'break' },
+	]);
+	assert.deepEqual(r.errors, ['25:00-26:00', '13:00-12:00', '10:00-11:00 nap']);
+	assert.deepEqual(parseSlotSpec('').slots, []);
+});
+
+test('scheduled slot: found only inside its window, on its weekday', () => {
+	const mon = (h: number, m: number): Date => new Date(2026, 9, 5, h, m); // Mon 5 Oct 2026
+	assert.equal(scheduledSlotAt(mon(12, 29), WEEK), null);
+	assert.equal(scheduledSlotAt(mon(12, 30), WEEK)?.key, '2026-10-05 12:30-13:00');
+	assert.equal(scheduledSlotAt(mon(13, 0), WEEK), null); // end is exclusive
+	assert.equal(scheduledSlotAt(mon(15, 0), WEEK)?.spec.kind, 'deep-work');
+	assert.equal(scheduledSlotAt(new Date(2026, 9, 6, 12, 45), WEEK), null); // Tuesday: none
+});
+
+test('touched files: modify counts, create/delete flags, rename carries history over', () => {
+	const slot = { touched: {} } as ActiveSlot;
+	touch(slot, 'a.md', 'create');
+	touch(slot, 'a.md', 'modify');
+	touch(slot, 'a.md', 'modify');
+	touch(slot, 'b.md', 'rename', 'a.md');
+	touch(slot, 'c.md', 'delete');
+	assert.equal(slot.touched['a.md'], undefined);
+	assert.deepEqual(slot.touched['b.md'], { path: 'b.md', created: true, deleted: false, modified: 2, renamedFrom: 'a.md' });
+	assert.equal(slot.touched['c.md']?.deleted, true);
+});
+
+test('report block: sections, "None" when empty, gaps and the open-only caveat line', () => {
+	const slot: ActiveSlot = {
+		kind: 'deep-work',
+		start: '2026-10-05T14:00:00+01:00',
+		end: '2026-10-05T15:30:00+01:00',
+		source: 'manual',
+		events: [{ at: '2026-10-05T14:10:00+01:00', path: 'T/A.md', kind: 'review', from: 'in-progress', to: 'in-review', worker: 'AI agent: test-agent-alpha' }],
+		touched: { 'T/A.md': { path: 'T/A.md', created: false, deleted: false, modified: 2 } },
+		held: ['T/A.md'],
+		heartbeat: '2026-10-05T15:00:00+01:00',
+		gaps: [{ from: '2026-10-05T14:20:00+01:00', to: '2026-10-05T14:40:00+01:00' }],
+	};
+	const out = buildSlotReport({ slot, endedAt: new Date('2026-10-05T15:00:00+01:00'), endedEarly: true, cameDue: [] }).join('\n');
+	assert.match(out, /^## 🎧 Deep work — 14:00–15:00 \(manual\)/);
+	assert.match(out, /ended early \(planned until 15:30\)/);
+	assert.match(out, /Obsidian was closed 14:20–14:40/);
+	assert.match(out, /- 14:10 \[\[T\/A\|A\]\] — AI agent: test-agent-alpha/);
+	assert.match(out, /\*\*Closed\*\*\n\n- None/);
+	assert.match(out, /Markdown files touched \(1\)\*\*\n\n- \[\[T\/A\|A\]\] — modified ×2/);
+	assert.ok(out.endsWith(TOUCHED_CAVEAT));
+	assert.equal(reportPath('Sheiko Reports/', new Date(2026, 9, 5)), 'Sheiko Reports/2026-10-05.md');
+});
+
+const T = 'TaskNotes/Tasks/A.md';
+
+async function vaultWithSlot(): Promise<FakeVault> {
+	const v = new FakeVault({ settings: { reviewStatus: 'in-review', agentNames: ['test-agent-alpha'], slotSchedule: ['', '', '', '', '', '', ''] } });
+	v.addTask(T, { status: 'in-progress', dateCreated: '2026-09-28T09:00:00+01:00', assignedTo: 'test-agent-alpha' });
+	await v.start();
+	await v.plugin.tracker.reconcile();
+	return v;
+}
+
+test('during a slot: the review prompt is held and logged; ending writes the report and shows held prompts', async () => {
+	const v = await vaultWithSlot();
+	const now = new Date();
+	assert.ok(v.plugin.slots.start('break', new Date(now.getTime() + 30 * 60 * 1000), 'manual', now));
+	v.edit(T, { status: 'in-review' });
+	v.plugin.tracker.onMetadataChanged(v.file(T));
+	v.plugin.slots.onFileEvent('modify', v.file(T));
+	await runTimers();
+	assert.deepEqual(v.prompts, []); // held, not shown
+	assert.deepEqual(v.data.activeSlot?.held, [T]);
+	assert.equal(v.data.activeSlot?.events[0]?.worker, 'AI agent: test-agent-alpha');
+
+	await v.plugin.slots.finish(true);
+	assert.equal(v.data.activeSlot, null);
+	const report = [...v.notes.entries()].find(([p]) => p.startsWith('Sheiko Reports/'));
+	assert.ok(report, 'report note written');
+	assert.match(report[1], /^# Sheiko report — \d{4}-\d{2}-\d{2}/);
+	assert.match(report[1], /☕ Break/);
+	assert.match(report[1], /Moved to review \(sign-off held\)\*\*\n\n- \d\d:\d\d \[\[TaskNotes\/Tasks\/A\|A\]\]/);
+	assert.match(report[1], /Markdown files touched \(1\)/);
+	assert.deepEqual(v.prompts, [{ paths: [T], reason: 'manual' }]); // shown once the slot ended
+});
+
+test('a second slot the same day adds a block; the first is never changed', async () => {
+	const v = await vaultWithSlot();
+	const now = new Date();
+	v.plugin.slots.start('break', new Date(now.getTime() + 60000), 'manual', now);
+	await v.plugin.slots.finish(true);
+	const path = [...v.notes.keys()].find((p) => p.startsWith('Sheiko Reports/')) ?? '';
+	const first = v.notes.get(path) ?? '';
+	v.plugin.slots.start('deep-work', new Date(now.getTime() + 60000), 'manual', now);
+	await v.plugin.slots.finish(true);
+	const both = v.notes.get(path) ?? '';
+	assert.ok(both.startsWith(first.trimEnd()));
+	assert.match(both, /🎧 Deep work/);
+});
+
+test('no slot running: prompts show as before; files touched are not logged', async () => {
+	const v = await vaultWithSlot();
+	v.plugin.slots.onFileEvent('modify', v.file(T));
+	v.edit(T, { status: 'in-review' });
+	v.plugin.tracker.onMetadataChanged(v.file(T));
+	await runTimers();
+	assert.deepEqual(v.prompts, [{ paths: [T], reason: 'review' }]);
+	assert.equal(v.data.activeSlot, null);
+});
+
+test('scheduled slot starts once per day+slot, and not when writes are blocked', async () => {
+	const v = await vaultWithSlot();
+	const today = new Date();
+	const hh = (d: Date): string => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+	const start = new Date(today.getTime() - 60000);
+	const end = new Date(today.getTime() + 10 * 60000);
+	if (start.getDate() !== end.getDate()) return; // runs within a minute of midnight: skip rather than fake the clock
+	v.data.settings.slotSchedule[today.getDay()] = `${hh(start)}-${hh(end)} deep work`;
+	await v.plugin.slots.tick(today);
+	assert.equal(v.data.activeSlot?.source, 'scheduled');
+	await v.plugin.slots.finish(true, today);
+	await v.plugin.slots.tick(today); // same window, ended early: not restarted
+	assert.equal(v.data.activeSlot, null);
+
+	const blocked = new FakeVault({ allowed: false, settings: { slotSchedule: [...v.data.settings.slotSchedule] } });
+	await blocked.start();
+	await blocked.plugin.tracker.reconcile();
+	await blocked.plugin.slots.tick(today);
+	assert.equal(blocked.data.activeSlot, null);
+});

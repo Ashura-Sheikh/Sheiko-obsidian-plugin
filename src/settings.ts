@@ -2,6 +2,7 @@ import { App, FileSystemAdapter, PluginSettingTab, Setting } from 'obsidian';
 import type { SettingDefinitionItem } from 'obsidian';
 import type SheikoPlugin from './main';
 import { DEFAULT_WEEK, WeekSchedule } from './lifecycle';
+import { ActiveSlot, parseSlotSpec } from './slot-logic';
 
 export interface SheikoSettings {
 	/** Written as `closedBy` and in Context entries. Blank = no `closedBy` is written. */
@@ -33,6 +34,10 @@ export interface SheikoSettings {
 	agentNames: string[];
 	/** Show "N awaiting sign-off" in the status bar. */
 	statusBarCount: boolean;
+	/** Per weekday (0 = Sunday): break / deep-work slots, e.g. "12:30-13:00 break, 14:00-15:30 deep work". */
+	slotSchedule: string[];
+	/** Folder for slot reports, one note per day. */
+	reportFolder: string;
 	// ---- Phase 3 ----
 	/** At each day's end time, roll unfinished tasks' `scheduled` to the next day. */
 	autoRoll: boolean;
@@ -54,6 +59,8 @@ export const DEFAULT_SETTINGS: SheikoSettings = {
 	workerField: 'assignedTo',
 	agentNames: [],
 	statusBarCount: true,
+	slotSchedule: ['', '', '', '', '', '', ''],
+	reportFolder: 'Sheiko Reports',
 	autoRoll: false,
 };
 
@@ -65,6 +72,10 @@ export interface PluginData {
 	unwitnessedCloses: { path: string; detectedAt: string }[];
 	/** ISO time of the last daily cutoff Sheiko acted on (sign-off prompt now, auto-roll in Phase 3). */
 	lastCutoffRun: string | null;
+	/** The break / deep-work slot running now, with what it has logged so far. */
+	activeSlot: ActiveSlot | null;
+	/** Key ("YYYY-MM-DD HH:mm-HH:mm") of the last scheduled slot started, so it starts once per day. */
+	lastScheduledSlot: string | null;
 }
 
 export function vaultBasePath(app: App): string | null {
@@ -338,6 +349,61 @@ export class SheikoSettingTab extends PluginSettingTab {
 							);
 						},
 					},
+				],
+			},
+			{
+				heading: 'Breaks and deep work',
+				rows: [
+					{
+						name: 'How slots work',
+						desc: () =>
+							'During a break or deep-work slot, sign-off prompts are held and Sheiko logs what happens: tasks moved to review, closes, ' +
+							'other status changes, tasks that came due, and Markdown files touched while Obsidian is open. When the slot ends, a report ' +
+							'is added to that day’s note in the report folder and held prompts are shown. Time tracking is unchanged. ' +
+							'Start one any time from the status bar or the command palette, or schedule them below.',
+					},
+					{
+						name: 'Report folder',
+						desc: () => 'One report note per day, e.g. Sheiko Reports/2026-10-05.md. Each slot adds a block; earlier blocks are never changed.',
+						render: (setting) => {
+							setting.addText((t) =>
+								t
+									.setPlaceholder(DEFAULT_SETTINGS.reportFolder)
+									.setValue(s.reportFolder)
+									.onChange(async (v) => {
+										s.reportFolder = v.trim().replace(/^\/+|\/+$/g, '') || DEFAULT_SETTINGS.reportFolder;
+										await this.plugin.saveSettings();
+									}),
+							);
+						},
+					},
+					...DAYS.map((name, i) => ({
+						name: `${name} slots`,
+						desc: () => {
+							const v = s.slotSchedule[i] ?? '';
+							const bad = parseSlotSpec(v).errors;
+							return bad.length
+								? `Not understood, ignored: ${bad.join(', ')}. Format: 12:30-13:00 break, 14:00-15:30 deep work`
+								: 'Comma-separated, e.g. 12:30-13:00 break, 14:00-15:30 deep work. Blank = none.';
+						},
+						render: (setting: Setting) => {
+							setting.addText((t) =>
+								t
+									.setPlaceholder('12:30-13:00 break')
+									.setValue(s.slotSchedule[i] ?? '')
+									.onChange(async (v) => {
+										s.slotSchedule[i] = v;
+										const bad = parseSlotSpec(v).errors;
+										setting.setDesc(
+											bad.length
+												? `Not understood, ignored: ${bad.join(', ')}. Format: 12:30-13:00 break, 14:00-15:30 deep work`
+												: 'Comma-separated, e.g. 12:30-13:00 break, 14:00-15:30 deep work. Blank = none.',
+										);
+										await this.plugin.saveSettings();
+									}),
+							);
+						},
+					})),
 				],
 			},
 			{
