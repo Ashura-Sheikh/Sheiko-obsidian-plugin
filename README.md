@@ -2,7 +2,7 @@
 
 An Obsidian plugin that works **alongside [TaskNotes](https://github.com/callumalpass/tasknotes)** to add task-lifecycle tracking and a daily auto-roll for unfinished tasks.
 
-> **Status: early release (v0.1.1), desktop only.** Plugin ID `sheiko-task-lifecycle`. Tested against TaskNotes **4.13.4**. Listed in the [Obsidian Community directory](https://community.obsidian.md/plugins/sheiko-task-lifecycle).
+> **Status: early release (v0.2.0), desktop only.** Plugin ID `sheiko-task-lifecycle`. Tested against TaskNotes **4.13.4**. Listed in the [Obsidian Community directory](https://community.obsidian.md/plugins/sheiko-task-lifecycle).
 
 ![The lifecycle window on a closed task: Context, Closure, and time per status split into working, overnight and weekend](docs/screenshots/lifecycle-window.png)
 
@@ -17,7 +17,9 @@ Sheiko edits your notes, so it starts switched off and stays cautious:
 - **Auto-roll is off by default.** Turn on *Dry run* first to see what it would change, then switch auto-roll on. Dry-run output goes to the developer console (Ctrl/Cmd+Shift+I) at the *Verbose* log level.
 - **Each batch run is capped** at 25 edited notes by default (*Max edits per run*). The rest are picked up on the next run.
 
-Once allowed, it writes to **task notes** (frontmatter: `completedDate`, `closedBy`, `timeToCloseMinutes`, `timeWorkingMinutes`, `timeOvernightMinutes`, `timeWeekendMinutes`, `closureSource`, `scheduled`, `rollCount`, `status`; sections: `## Context`, `## Status History`, `## Lifecycle Summary`) and, when auto-roll runs, to **that day's daily note** (`## 🔁 Rolled Over`, creating the note if it doesn't exist). To find TaskNotes tasks it looks through the vault's Markdown files (Obsidian's directory lists this as "vault enumeration"), but it only edits task notes and the daily note. It never sends data anywhere: no network use, no telemetry.
+Once allowed, it writes to **task notes** (frontmatter: `completedDate`, `closedBy`, `timeToCloseMinutes`, `timeWorkingMinutes`, `timeOvernightMinutes`, `timeWeekendMinutes`, `closureSource`, `scheduled`, `rollCount`, `status`; sections: `## Context`, `## Status History`, `## Lifecycle Summary`) and, when auto-roll runs, to **that day's daily note** (`## 🔁 Rolled Over`, creating the note if it doesn't exist). To find TaskNotes tasks it looks through the vault's Markdown files (Obsidian's directory lists this as "vault enumeration"), but it only edits task notes, the daily note and, if you use slots, its own report notes (see below). It never sends data anywhere: no network use, no telemetry.
+
+**New in 0.2.0:** notes typed in the sign-off window are added to that task's `## Context`. If you use break or deep-work slots, Sheiko also writes **one report note per day** in a report folder (default `Sheiko Reports/2026-10-06.md`). Each slot adds a block, and earlier blocks are never changed. No slots, no report notes.
 
 ## Getting started
 
@@ -41,9 +43,17 @@ Once allowed, it writes to **task notes** (frontmatter: `completedDate`, `closed
 ### 2. Auto-stage and sign-off (Phase 2)
 
 - **Auto-stage (forward only).** Starting a TaskNotes timer moves the task to the working status. Ticking the last unticked checkbox moves it to the review status. Moves happen only when something changes, never just because of existing state, and never backwards or out of a completed status.
-- **Sign-off prompt.** Opens when a task enters review, and at each day's end time for anything still waiting. Buttons: *Approve and close*, *Send back*, *Open*, *Later*. **Closing a task is always a user click, never automatic.**
+- **Sign-off window.** It opens when a task enters review, and at each day's end time for anything still waiting. Each task gets a card with:
+  - **Who worked on it**, read from a frontmatter field (default `assignedTo`). Names you list as AI agents show as *AI agent*, any other name as *Human*, and an empty field as *Worker: not recorded*. It's never guessed.
+  - **Summary and context:** the first lines of the task's description, the latest Context entry, and the facts: time in progress, in review since, checklist progress, due or overdue, and how many times it was sent back. Cards start folded when more than 3 tasks are waiting.
+  - **A context box** for a note while you decide. It's saved to the task's Context before *Approve* or *Send back* runs.
 
-![The Sign-off needed window with Open, Send back to In progress, Approve and close, and Later](docs/screenshots/sign-off-prompt.png)
+  Buttons: *Approve and close*, *Send back*, *Open*, *Later*. **Closing a task is always a user click, never automatic.**
+- **Coming back to "Later".** The status bar shows **⭐ N awaiting sign-off**. Click it to reopen the window with everything still in review. It's hidden when nothing is waiting, and you can switch it off.
+
+![The Sign-off needed window: one card per task with Open, Send back and Approve and close, a worker badge (AI agent, Human, or Worker: not recorded), a folded Summary and context panel, and a context box](docs/screenshots/sign-off-window.png)
+
+![The status bar showing 4 awaiting sign-off and a running Deep work until 13:50 slot](docs/screenshots/status-bar.png)
 
 ### 3. Auto-roll and summary (Phase 3)
 
@@ -54,6 +64,26 @@ Once allowed, it writes to **task notes** (frontmatter: `completedDate`, `closed
 
 ![A daily note's Rolled Over section: the run time, a table of rolled tasks, and the list of tasks with no date](docs/screenshots/rolled-over-daily-note.png)
 
+### 4. Breaks and deep work
+
+Start a slot from the 🎧 status-bar item or the command palette, or schedule slots per weekday in settings (e.g. `12:30-13:00 break, 14:00-15:30 deep work`). Break and deep work behave the same way.
+
+- **While a slot runs**, sign-off prompts are held. Opening the sign-off window yourself still works. Sheiko logs:
+  - tasks moved to review;
+  - closes and other status changes;
+  - tasks whose timed `due` falls inside the slot;
+  - Markdown files touched.
+- **When it ends**, at its time or early from the status bar, a report block is added to that day's note in the report folder, and held prompts are shown.
+- **Time tracking is unchanged.** Slots don't affect the working, overnight and weekend split.
+- **What "files touched" means:** any Markdown file changed while Obsidian is open, by you or by another plugin. For example, TaskNotes re-saves its board order across a column when a card moves. Changes made while Obsidian was closed, such as by an agent editing files directly, aren't captured, and the report says so. If Obsidian was closed during part of a slot, that stretch is noted as a gap.
+
+<p>
+  <img src="docs/screenshots/slot-start.png" alt="Start a break or deep-work slot: type, minutes, and 15m / 30m / 60m / 90m buttons" width="49%">
+  <img src="docs/screenshots/slot-end.png" alt="Ending a break early: counts so far, with Keep going and End now and write report" width="49%">
+</p>
+
+![A slot report block: moved to review with the worker, closed, other status changes, came due, and Markdown files touched, ending with the closed-while-Obsidian-was-shut caveat](docs/screenshots/slot-report.png)
+
 ## Commands
 
 - Open task lifecycle (context, closure, time per status). Also opened from the ribbon icon.
@@ -61,6 +91,8 @@ Once allowed, it writes to **task notes** (frontmatter: `completedDate`, `closed
 - Show tasks waiting for sign-off
 - Roll unfinished tasks now (scheduled today or earlier → tomorrow)
 - List tasks closed while Obsidian was shut
+- Start a break or deep-work slot
+- End the current break or deep-work slot now
 
 The ribbon icon and the lifecycle command need a TaskNotes task open. On any other note you get a notice instead:
 
@@ -73,12 +105,17 @@ The ribbon icon and the lifecycle command need a TaskNotes task open. On any oth
 | Identity | *(blank)* | Written as `closedBy` and in Context entries. Blank = no `closedBy`. |
 | Working hours (per weekday) | 09:00–17:00, every day | The end time is also the daily roll cutoff. The same window decides the working / overnight / weekend split. |
 | Allowed vaults | *(empty)* | **Nothing is written until the current vault is allowed.** |
-| Dry run | off | Logs intended writes instead of making them, including the daily note |
+| Dry run | off | Logs intended writes instead of making them, including the daily note and slot reports |
 | Max edits per run | 25 | Caps startup catch-up and auto-roll. Tasks held back are listed and picked up on the next run. |
 | Working / review / done status | `in-progress` / *(not set)* / `done` | Picked from TaskNotes' own status list. While review is not set, the checkbox move and both sign-off prompts are off. |
 | Auto-stage on timer start / all boxes ticked | on / on | Each can be switched off |
 | Sign-off prompt on review / at cutoff | on / on | Each can be switched off |
 | Auto-roll | off | Try dry run first |
+| Show sign-off count in the status bar | on | Click it to reopen the sign-off window |
+| Worker field | `assignedTo` | Frontmatter field naming who worked on a task |
+| AI agent names | *(empty)* | Comma-separated, not case-sensitive. Any other name shows as human |
+| Report folder | `Sheiko Reports` | One note per day for slot reports |
+| Slots (per weekday) | *(blank)* | e.g. `12:30-13:00 break, 14:00-15:30 deep work`. Blank = none. Bad entries are flagged, not guessed |
 
 Statuses and field names are read from TaskNotes' settings rather than hardcoded. TaskNotes' default statuses don't include a review status, so add one in TaskNotes first if you want the sign-off flow.
 
@@ -86,6 +123,8 @@ Statuses and field names are read from TaskNotes' settings rather than hardcoded
   <img src="docs/screenshots/settings-stages.png" alt="Settings: Stages and sign-off, with the working, review and done statuses and the four auto-stage and prompt toggles" width="49%">
   <img src="docs/screenshots/settings-auto-roll.png" alt="Settings: Auto-roll toggle and the per-weekday working-hours table" width="49%">
 </p>
+
+![Settings: Who worked on it (worker field, AI agent names) and Breaks and deep work (how slots work, report folder, per-weekday slots)](docs/screenshots/settings-worker-slots.png)
 
 ## Requirements
 
@@ -106,6 +145,8 @@ Statuses and field names are read from TaskNotes' settings rather than hardcoded
 - Sheiko waits 600 ms after a change so TaskNotes can finish its own writes. That delay is a timing assumption.
 - Tested only against TaskNotes 4.13.4. A change to TaskNotes' frontmatter or settings shape could break Sheiko.
 - If a task's only recorded status change is the close itself, the Lifecycle Summary's *Time per status* table has no rows.
+- The worker badge is only as accurate as the worker field. A name not in *AI agent names*, including a typo, shows as *Human*.
+- "Came due during the slot" counts only `due` values with a time. Date-only dues are left out.
 
 ## Support
 
@@ -124,9 +165,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs and open pull requ
 
 **Naming note:** class names, CSS classes, notices ("Sheiko: …") and the `closureSource: sheiko` value written to task notes deliberately keep the short name "Sheiko". Changing `closureSource` would stop a reopen from clearing closure fields on tasks Sheiko had already closed.
 
-**Source layout (`src/`):** `main.ts` (plugin entry, commands, cutoff timer), `tracker.ts` (status-change detection, closure, startup catch-up), `lifecycle.ts` (history, time buckets, summary), `roll.ts` / `roller.ts` (auto-roll rules and engine), `tasknotes.ts` (reading TaskNotes' config), `settings.ts`, `ui/` (lifecycle and sign-off windows).
+**Source layout (`src/`):** `main.ts` (plugin entry, commands, cutoff timer), `tracker.ts` (status-change detection, closure, startup catch-up), `lifecycle.ts` (history, time buckets, summary), `roll.ts` / `roller.ts` (auto-roll rules and engine), `review.ts` (sign-off card summaries and worker labels), `slots.ts` / `slot-logic.ts` (break and deep-work slots and reports), `tasknotes.ts` (reading TaskNotes' config), `settings.ts`, `ui/` (lifecycle, sign-off and slot windows).
 
-**Tests (`test/`):** 25 tests run the real tracker and auto-roll code against an in-memory vault and a stand-in for the `obsidian` module (`test/obsidian-mock.ts`). They cover the code that edits notes: closure fields, reopen, startup catch-up, dry run, the edit limit, and what does and doesn't roll. The repo's build workflow (`.github/workflows/lint.yml`) also runs them.
+**Tests (`test/`):** 43 tests run the real tracker, auto-roll and slot code against an in-memory vault and a stand-in for the `obsidian` module (`test/obsidian-mock.ts`). They cover the code that edits notes: closure fields, reopen, startup catch-up, dry run, the edit limit, what does and doesn't roll, sign-off summaries, and slot holds and reports. The repo's build workflow (`.github/workflows/lint.yml`) also runs them.
 
 ## Licence
 
