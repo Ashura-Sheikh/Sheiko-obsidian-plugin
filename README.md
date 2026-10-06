@@ -19,7 +19,7 @@ Sheiko edits your notes, so it starts switched off and stays cautious:
 
 Once allowed, it writes to **task notes** (frontmatter: `completedDate`, `closedBy`, `timeToCloseMinutes`, `timeWorkingMinutes`, `timeOvernightMinutes`, `timeWeekendMinutes`, `closureSource`, `scheduled`, `rollCount`, `status`; sections: `## Context`, `## Status History`, `## Lifecycle Summary`) and, when auto-roll runs, to **that day's daily note** (`## 🔁 Rolled Over`, creating the note if it doesn't exist). To find TaskNotes tasks it looks through the vault's Markdown files (Obsidian's directory lists this as "vault enumeration"), but it only edits task notes, the daily note and, if you use slots, its own report notes (see below). It never sends data anywhere: no network use, no telemetry.
 
-**New in 0.2.0:** notes typed in the sign-off window are added to that task's `## Context`. If you use break or deep-work slots, Sheiko also writes **one report note per day** in a report folder (default `Sheiko Reports/2026-10-06.md`). Each slot adds a block, and earlier blocks are never changed. No slots, no report notes.
+**New in 0.2.0:** notes typed in the sign-off window are added to that task's `## Context`. If you use break or deep-work slots, Sheiko also writes **one report note per day** in a report folder (default `Sheiko Reports/`), named by date, e.g. `Sheiko Reports/2026-10-06.md`. Each slot adds a block, and earlier blocks are never changed. No slots, no report notes.
 
 ## Getting started
 
@@ -147,6 +147,8 @@ Statuses and field names are read from TaskNotes' settings rather than hardcoded
 - If a task's only recorded status change is the close itself, the Lifecycle Summary's *Time per status* table has no rows.
 - The worker badge is only as accurate as the worker field. A name not in *AI agent names*, including a typo, shows as *Human*.
 - "Came due during the slot" counts only `due` values with a time. Date-only dues are left out.
+- If a scheduled slot's start time comes while a slot you started yourself is still running, the scheduled one starts when yours ends, for the rest of its window.
+- "Markdown files touched" counts every `.md` file changed while a slot runs, including in code folders kept inside the vault. For example, an `npm install` in a project folder in the vault can add hundreds of files from `node_modules/` to the report.
 
 ## Support
 
@@ -167,7 +169,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs and open pull requ
 
 **Source layout (`src/`):** `main.ts` (plugin entry, commands, cutoff timer), `tracker.ts` (status-change detection, closure, startup catch-up), `lifecycle.ts` (history, time buckets, summary), `roll.ts` / `roller.ts` (auto-roll rules and engine), `review.ts` (sign-off card summaries and worker labels), `slots.ts` / `slot-logic.ts` (break and deep-work slots and reports), `tasknotes.ts` (reading TaskNotes' config), `settings.ts`, `ui/` (lifecycle, sign-off and slot windows).
 
-**Tests (`test/`):** 46 tests run the real tracker, auto-roll and slot code against an in-memory vault and a stand-in for the `obsidian` module (`test/obsidian-mock.ts`). They cover the code that edits notes: closure fields, reopen, startup catch-up, dry run, the edit limit, what does and doesn't roll, sign-off summaries, and slot holds and reports. The repo's build workflow (`.github/workflows/lint.yml`) also runs them.
+**Tests (`test/`):** 48 tests run the real tracker, auto-roll and slot code against an in-memory vault and a stand-in for the `obsidian` module (`test/obsidian-mock.ts`). They cover the code that edits notes: closure fields, reopen, startup catch-up, dry run, the edit limit, what does and doesn't roll, sign-off summaries, and slot holds and reports. The repo's build workflow (`.github/workflows/lint.yml`) also runs them.
 
 ## Licence
 
