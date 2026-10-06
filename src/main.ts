@@ -146,6 +146,8 @@ export default class SheikoPlugin extends Plugin {
 		);
 
 		this.app.workspace.onLayoutReady(() => {
+			// From here on, vault events are real edits, not the vault loading.
+			this.slots.markReady();
 			if (!this.taskNotes.found) {
 				// Without TaskNotes, Sheiko does nothing: no tracking, no auto-roll, no prompts.
 				new Notice('Sheiko: TaskNotes isn\'t installed and enabled, so Sheiko is doing nothing. Reload Obsidian after enabling it.');

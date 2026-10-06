@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeVault, runTimers } from './fake-vault';
+import { FocusSlots } from '../src/slots';
 import { TOUCHED_CAVEAT, ActiveSlot, buildSlotReport, normalizeActiveSlot, parseSlotSpec, plural, reportPath, scheduledSlotAt, touch } from '../src/slot-logic';
 
 const WEEK = ['', '12:30-13:00 break, 14:00-15:30 deep work', '', '', '', '', ''];
@@ -61,6 +62,8 @@ test('report block: sections, "None" when empty, gaps and the open-only caveat l
 	assert.match(out, /\*\*Closed\*\*\n\n- None/);
 	assert.match(out, /Markdown files touched \(1\)\*\*\n\n- modified ×2 · \[\[T\/A\|A\]\]/);
 	assert.ok(out.endsWith(TOUCHED_CAVEAT));
+	assert.match(out, /1 sign-off prompt was held until it ended\./);
+	assert.doesNotMatch(out, /Sign-off prompts were held/);
 	assert.equal(reportPath('Sheiko Reports/', new Date(2026, 9, 5)), 'Sheiko Reports/2026-10-05.md');
 });
 
@@ -202,4 +205,30 @@ test('unload: a slot save waiting on the debounce is written, not dropped', asyn
 	assert.equal(saves, 1);
 	v.plugin.slots.stop(); // nothing pending: no extra save
 	assert.equal(saves, 1);
+});
+
+test('report wording: a slot with no held prompts says so, not "were held"', () => {
+	const slot: ActiveSlot = {
+		kind: 'break', start: '2026-10-06T12:49:00+02:00', end: '2026-10-06T13:49:00+02:00', source: 'manual',
+		events: [], touched: {}, held: [], heartbeat: '2026-10-06T12:52:00+02:00', gaps: [],
+	};
+	const out = buildSlotReport({ slot, endedAt: new Date('2026-10-06T12:52:00+02:00'), endedEarly: true, cameDue: [] }).join('\n');
+	assert.match(out, /No sign-off prompts came up during this slot\./);
+	assert.doesNotMatch(out, /were held/);
+	const two = buildSlotReport({ slot: { ...slot, held: ['a.md', 'b.md'] }, endedAt: new Date('2026-10-06T12:52:00+02:00'), endedEarly: true, cameDue: [] }).join('\n');
+	assert.match(two, /2 sign-off prompts were held until it ended\./);
+});
+
+test('startup: file events before the layout is ready (vault loading) are not logged', async () => {
+	const v = await vaultWithSlot();
+	const slots = new FocusSlots(v.plugin); // a fresh instance, as at Obsidian startup: not ready yet
+	const now = new Date();
+	slots.start('deep-work', new Date(now.getTime() + 30 * 60 * 1000), 'manual', now);
+	slots.onFileEvent('create', v.file(T)); // Obsidian announcing an existing file while loading
+	assert.deepEqual(v.data.activeSlot?.touched, {});
+	slots.markReady();
+	slots.onFileEvent('modify', v.file(T)); // a real edit after layout ready
+	assert.equal(v.data.activeSlot?.touched[T]?.modified, 1);
+	assert.equal(v.data.activeSlot?.touched[T]?.created, false);
+	slots.stop();
 });

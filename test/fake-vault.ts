@@ -206,6 +206,7 @@ export class FakeVault {
 		plugin.tracker = new Tracker(plugin);
 		plugin.roller = new Roller(plugin);
 		plugin.slots = new FocusSlots(plugin);
+		plugin.slots.markReady(); // the fake vault starts with its layout ready
 		this.plugin = plugin;
 	}
 

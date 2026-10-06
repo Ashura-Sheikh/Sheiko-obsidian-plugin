@@ -152,6 +152,11 @@ export interface ReportInput {
 	cameDue: { path: string; due: string }[];
 }
 
+/** States only what happened: held prompts are counted, and none is said plainly (0.2.0 always said "were held"). */
+function heldLine(n: number): string {
+	return n === 0 ? 'No sign-off prompts came up during this slot.' : `${plural(n, 'sign-off prompt was', 'sign-off prompts were')} held until it ended.`;
+}
+
 /** One report block, appended to the day's report note. Never overwrites earlier blocks. */
 export function buildSlotReport(inp: ReportInput): string[] {
 	const s = inp.slot;
@@ -159,7 +164,7 @@ export function buildSlotReport(inp: ReportInput): string[] {
 	const out: string[] = [
 		`## ${kindIcon(s.kind)} ${kindLabel(s.kind)} — ${hm(s.start)}–${hm(endIso)} (${s.source})`,
 		'',
-		`*Written by Sheiko at ${hm(endIso)}${inp.endedEarly ? `, ended early (planned until ${hm(s.end)})` : ''}. Sign-off prompts were held during this slot.*`,
+		`*Written by Sheiko at ${hm(endIso)}${inp.endedEarly ? `, ended early (planned until ${hm(s.end)})` : ''}. ${heldLine(s.held.length)}*`,
 	];
 	for (const g of s.gaps) {
 		out.push('', `*Obsidian was closed ${hm(g.from)}–${hm(g.to)}, so nothing in that stretch was captured.*`);

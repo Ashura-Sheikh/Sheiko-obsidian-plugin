@@ -20,6 +20,12 @@ export class FocusSlots {
 	private plugin: SheikoPlugin;
 	private saveTimer: number | null = null;
 	private finishing = false;
+	/**
+	 * False until Obsidian's layout is ready. While the vault loads, Obsidian sends a
+	 * `create` event for every existing file; counting those would list the whole vault
+	 * as "created" when Obsidian starts during a slot (0.2.0 bug, fixed in 0.2.1).
+	 */
+	private ready = false;
 
 	constructor(plugin: SheikoPlugin) {
 		this.plugin = plugin;
@@ -27,6 +33,11 @@ export class FocusSlots {
 
 	get active(): ActiveSlot | null {
 		return this.plugin.data.activeSlot ?? null;
+	}
+
+	/** Called once the layout is ready; file events before this are vault loading, not edits. */
+	markReady(): void {
+		this.ready = true;
 	}
 
 	isActive(): boolean {
@@ -196,6 +207,7 @@ export class FocusSlots {
 	}
 
 	onFileEvent(kind: 'create' | 'modify' | 'delete' | 'rename', file: TAbstractFile, oldPath?: string): void {
+		if (!this.ready) return;
 		const slot = this.active;
 		if (!slot || !(file instanceof TFile) || file.extension !== 'md') return;
 		if (this.isReportFile(file.path)) return; // Sheiko's own report note isn't "work done"
