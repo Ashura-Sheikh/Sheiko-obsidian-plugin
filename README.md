@@ -132,7 +132,7 @@ Statuses and field names are read from TaskNotes' settings rather than hardcoded
 - **TaskNotes** installed and enabled (tested on 4.13.4)
 - Obsidian's Daily Notes settings (folder and date format) are used for the Rolled Over summary
 
-![Installed plugins: Sheiko Task Lifecycle v0.2.0 by Sheikh M Sahil, enabled](docs/screenshots/installed-plugins.png)
+![Installed plugins: Sheiko Task Lifecycle v0.2.1 by Sheikh M Sahil, enabled](docs/screenshots/installed-plugins.png)
 
 ## Compatibility
 
