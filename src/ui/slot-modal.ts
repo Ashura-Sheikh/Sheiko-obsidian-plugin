@@ -1,6 +1,6 @@
 import { App, Modal, Setting } from 'obsidian';
 import type SheikoPlugin from '../main';
-import { SlotKind, kindLabel } from '../slot-logic';
+import { SlotKind, kindLabel, plural } from '../slot-logic';
 
 /** Start a break or deep-work slot now, for a number of minutes. */
 export class StartSlotModal extends Modal {
@@ -85,7 +85,7 @@ export class EndSlotModal extends Modal {
 		const files = Object.keys(slot.touched).length;
 		contentEl.createEl('p', {
 			cls: 'sheiko-muted',
-			text: `So far: ${n} status change(s), ${slot.held.length} sign-off prompt(s) held, ${files} Markdown file(s) touched.`,
+			text: `So far: ${plural(n, 'status change', 'status changes')}, ${plural(slot.held.length, 'sign-off prompt', 'sign-off prompts')} held, ${plural(files, 'Markdown file', 'Markdown files')} touched.`,
 		});
 		new Setting(contentEl)
 			.addButton((b) => b.setButtonText('Keep going').onClick(() => this.close()))

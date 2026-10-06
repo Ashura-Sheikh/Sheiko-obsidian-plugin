@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeVault, runTimers } from './fake-vault';
-import { TOUCHED_CAVEAT, ActiveSlot, buildSlotReport, parseSlotSpec, reportPath, scheduledSlotAt, touch } from '../src/slot-logic';
+import { TOUCHED_CAVEAT, ActiveSlot, buildSlotReport, parseSlotSpec, plural, reportPath, scheduledSlotAt, touch } from '../src/slot-logic';
 
 const WEEK = ['', '12:30-13:00 break, 14:00-15:30 deep work', '', '', '', '', ''];
 
@@ -150,4 +150,10 @@ test('hold rule: a prompt you ask for during a slot is shown, not held', async (
 	v.plugin.promptSignoff([v.file(T)], 'cutoff');
 	assert.deepEqual(v.prompts, [{ paths: [T], reason: 'manual' }]);
 	assert.deepEqual(v.data.activeSlot?.held, [T]);
+});
+
+test('end-slot counts: singular for 1, plural otherwise', () => {
+	assert.equal(plural(1, 'file', 'files'), '1 file');
+	assert.equal(plural(0, 'file', 'files'), '0 files');
+	assert.equal(plural(2, 'status change', 'status changes'), '2 status changes');
 });

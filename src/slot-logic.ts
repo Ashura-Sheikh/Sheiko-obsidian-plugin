@@ -99,6 +99,11 @@ export function scheduledSlotAt(now: Date, week: string[]): { spec: SlotSpec; st
 	return null;
 }
 
+/** "1 file", "2 files": count plus the singular or plural word. */
+export function plural(n: number, one: string, many: string): string {
+	return `${n} ${n === 1 ? one : many}`;
+}
+
 export function kindLabel(kind: SlotKind): string {
 	return kind === 'deep-work' ? 'Deep work' : 'Break';
 }
