@@ -5,7 +5,7 @@
 // report block is written to that day's report note. Breaks and deep work behave the
 // same (Sheikh, 2026-10-05); the kind is only a label. Time tracking is unchanged.
 
-import { localDateString, toLocalIso } from './lifecycle';
+import { localDateString, parseTimestamp, toLocalIso } from './lifecycle';
 
 export type SlotKind = 'break' | 'deep-work';
 
@@ -46,6 +46,32 @@ export interface ActiveSlot {
 	heartbeat: string;
 	/** Stretches of the slot when Obsidian was closed, so nothing was captured. */
 	gaps: { from: string; to: string }[];
+}
+
+/**
+ * Checks a running slot read back from saved plugin data. Missing lists are filled in;
+ * a slot without a valid kind, start or end is dropped (it could never end cleanly).
+ * Keeps a damaged data.json from breaking status tracking, which logs into the slot.
+ */
+export function normalizeActiveSlot(raw: unknown): ActiveSlot | null {
+	if (!raw || typeof raw !== 'object') return null;
+	const r = raw as Partial<Record<keyof ActiveSlot, unknown>>;
+	const kind = r.kind === 'break' || r.kind === 'deep-work' ? r.kind : null;
+	const start = typeof r.start === 'string' && parseTimestamp(r.start) ? r.start : null;
+	const end = typeof r.end === 'string' && parseTimestamp(r.end) ? r.end : null;
+	if (!kind || !start || !end) return null;
+	const touched = r.touched && typeof r.touched === 'object' && !Array.isArray(r.touched) ? (r.touched as Record<string, TouchedFile>) : {};
+	return {
+		kind,
+		start,
+		end,
+		source: r.source === 'scheduled' ? 'scheduled' : 'manual',
+		events: Array.isArray(r.events) ? [...(r.events as SlotEvent[])] : [],
+		touched: { ...touched },
+		held: Array.isArray(r.held) ? (r.held as unknown[]).filter((x): x is string => typeof x === 'string') : [],
+		heartbeat: typeof r.heartbeat === 'string' && parseTimestamp(r.heartbeat) ? r.heartbeat : start,
+		gaps: Array.isArray(r.gaps) ? [...(r.gaps as ActiveSlot['gaps'])] : [],
+	};
 }
 
 const HM = /^([01]?\d|2[0-3]):([0-5]\d)$/;

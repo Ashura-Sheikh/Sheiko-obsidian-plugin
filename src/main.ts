@@ -1,7 +1,7 @@
 import { Notice, Plugin, TFile } from 'obsidian';
 import { cutoffDue, parseTimestamp } from './lifecycle';
 import { Roller } from './roller';
-import { kindIcon, kindLabel } from './slot-logic';
+import { kindIcon, kindLabel, normalizeActiveSlot } from './slot-logic';
 import { FocusSlots } from './slots';
 import { DEFAULT_SETTINGS, PluginData, SheikoSettingTab, SheikoSettings } from './settings';
 import { TaskNotesConfig, isTaskFile, loadTaskNotesConfig, statusOf } from './tasknotes';
@@ -284,7 +284,7 @@ export default class SheikoPlugin extends Plugin {
 			lastStatus: { ...(raw.lastStatus ?? {}) },
 			unwitnessedCloses: [...(raw.unwitnessedCloses ?? [])],
 			lastCutoffRun: typeof raw.lastCutoffRun === 'string' ? raw.lastCutoffRun : null,
-			activeSlot: raw.activeSlot && typeof raw.activeSlot === 'object' ? { ...raw.activeSlot, gaps: [...(raw.activeSlot.gaps ?? [])] } : null,
+			activeSlot: normalizeActiveSlot(raw.activeSlot),
 			lastScheduledSlot: typeof raw.lastScheduledSlot === 'string' ? raw.lastScheduledSlot : null,
 		};
 		this.settings = this.data.settings;

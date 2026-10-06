@@ -33,9 +33,12 @@ export class FocusSlots {
 		return this.active !== null;
 	}
 
+	/** On unload: a save still waiting on the debounce is written now, not dropped. */
 	stop(): void {
-		if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
+		if (this.saveTimer === null) return;
+		window.clearTimeout(this.saveTimer);
 		this.saveTimer = null;
+		void this.plugin.saveData(this.plugin.data);
 	}
 
 	/** Starts a slot now. Refuses if one is already running. */

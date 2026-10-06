@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeVault, runTimers } from './fake-vault';
-import { TOUCHED_CAVEAT, ActiveSlot, buildSlotReport, parseSlotSpec, plural, reportPath, scheduledSlotAt, touch } from '../src/slot-logic';
+import { TOUCHED_CAVEAT, ActiveSlot, buildSlotReport, normalizeActiveSlot, parseSlotSpec, plural, reportPath, scheduledSlotAt, touch } from '../src/slot-logic';
 
 const WEEK = ['', '12:30-13:00 break, 14:00-15:30 deep work', '', '', '', '', ''];
 
@@ -156,4 +156,50 @@ test('end-slot counts: singular for 1, plural otherwise', () => {
 	assert.equal(plural(1, 'file', 'files'), '1 file');
 	assert.equal(plural(0, 'file', 'files'), '0 files');
 	assert.equal(plural(2, 'status change', 'status changes'), '2 status changes');
+});
+
+test('saved slot data: missing lists filled in, unusable slots dropped', () => {
+	const ok = normalizeActiveSlot({ kind: 'break', start: '2026-10-06T12:00:00+02:00', end: '2026-10-06T12:30:00+02:00' });
+	assert.ok(ok);
+	assert.deepEqual([ok.events, ok.touched, ok.held, ok.gaps], [[], {}, [], []]);
+	assert.equal(ok.heartbeat, ok.start);
+	assert.equal(ok.source, 'manual');
+	assert.equal(normalizeActiveSlot({ kind: 'nap', start: '2026-10-06T12:00:00+02:00', end: '2026-10-06T12:30:00+02:00' }), null);
+	assert.equal(normalizeActiveSlot({ kind: 'break', start: 'soon', end: '2026-10-06T12:30:00+02:00' }), null);
+	assert.equal(normalizeActiveSlot(null), null);
+});
+
+test('slot logging failing never stops tracking: the close is still recorded', async () => {
+	const v = await vaultWithSlot();
+	const now = new Date();
+	v.plugin.slots.start('break', new Date(now.getTime() + 30 * 60 * 1000), 'manual', now);
+	v.plugin.slots.onTransition = () => {
+		throw new Error('broken slot data');
+	};
+	const origError = console.error;
+	console.error = () => undefined;
+	try {
+		v.edit(T, { status: 'done' });
+		v.plugin.tracker.onMetadataChanged(v.file(T));
+		await runTimers();
+	} finally {
+		console.error = origError;
+	}
+	assert.ok(v.fm(T).completedDate, 'closure fields written despite the slot error');
+});
+
+test('unload: a slot save waiting on the debounce is written, not dropped', async () => {
+	const v = await vaultWithSlot();
+	const now = new Date();
+	v.plugin.slots.start('break', new Date(now.getTime() + 30 * 60 * 1000), 'manual', now);
+	let saves = 0;
+	v.plugin.saveData = () => {
+		saves++;
+		return Promise.resolve();
+	};
+	v.plugin.slots.onFileEvent('modify', v.file(T)); // queues a debounced save
+	v.plugin.slots.stop();
+	assert.equal(saves, 1);
+	v.plugin.slots.stop(); // nothing pending: no extra save
+	assert.equal(saves, 1);
 });

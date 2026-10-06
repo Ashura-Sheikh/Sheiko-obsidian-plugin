@@ -295,7 +295,12 @@ export class Tracker {
 		await this.appendHistory(file, list);
 		for (const t of list) {
 			if (t.kind !== 'live' || t.from === null) continue;
-			this.plugin.slots?.onTransition(file, t);
+			// Slot logging is a side record: if it fails, tracking (closure fields below) still runs.
+			try {
+				this.plugin.slots?.onTransition(file, t);
+			} catch (e) {
+				console.error('[Sheiko] Slot logging failed; tracking continues.', e);
+			}
 			const was = isCompletedStatus(this.cfg, t.from);
 			const now = isCompletedStatus(this.cfg, t.to);
 			if (!was && now) {
