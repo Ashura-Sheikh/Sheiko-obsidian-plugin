@@ -141,12 +141,12 @@ export function buildSlotReport(inp: ReportInput): string[] {
 	const review = s.events.filter((e) => e.kind === 'review');
 	section(
 		'Moved to review (sign-off held)',
-		review.map((e) => `- ${hm(e.at)} ${link(e.path)}${e.worker ? ` — ${e.worker}` : ''}`),
+		review.map((e) => `- ${hm(e.at)} · ${e.from ?? '?'} → ${e.to}${e.worker ? ` · ${e.worker}` : ''} · ${link(e.path)}`),
 		'None',
 	);
-	section('Closed', s.events.filter((e) => e.kind === 'closed').map((e) => `- ${hm(e.at)} ${link(e.path)} (${e.from ?? '?'} → ${e.to})`), 'None');
-	section('Other status changes', s.events.filter((e) => e.kind === 'status').map((e) => `- ${hm(e.at)} ${link(e.path)} ${e.from ?? '?'} → ${e.to}`), 'None');
-	section('Came due during the slot', inp.cameDue.map((d) => `- ${link(d.path)} — due ${d.due.replace('T', ' ')}`), 'None');
+	section('Closed', s.events.filter((e) => e.kind === 'closed').map((e) => `- ${hm(e.at)} · ${e.from ?? '?'} → ${e.to} · ${link(e.path)}`), 'None');
+	section('Other status changes', s.events.filter((e) => e.kind === 'status').map((e) => `- ${hm(e.at)} · ${e.from ?? '?'} → ${e.to} · ${link(e.path)}`), 'None');
+	section('Came due during the slot', inp.cameDue.map((d) => `- due ${d.due.replace('T', ' ')} · ${link(d.path)}`), 'None');
 	const touched = Object.values(s.touched).sort((a, b) => a.path.localeCompare(b.path));
 	section(
 		`Markdown files touched (${touched.length})`,
@@ -156,7 +156,7 @@ export function buildSlotReport(inp: ReportInput): string[] {
 			if (t.renamedFrom) what.push(`renamed from ${t.renamedFrom}`);
 			if (t.modified) what.push(`modified ×${t.modified}`);
 			if (t.deleted) what.push('deleted');
-			return `- ${t.deleted ? t.path : link(t.path)} — ${what.join(', ')}`;
+			return `- ${what.join(', ')} · ${t.deleted ? t.path : link(t.path)}`;
 		}),
 		'None',
 	);

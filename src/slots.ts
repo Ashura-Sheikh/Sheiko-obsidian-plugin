@@ -7,7 +7,7 @@
 
 import { Notice, TAbstractFile, TFile, normalizePath } from 'obsidian';
 import type SheikoPlugin from './main';
-import { Transition, localDateString, parseTimestamp, toLocalIso } from './lifecycle';
+import { Transition, parseTimestamp, toLocalIso } from './lifecycle';
 import { classifyWorker, workerLabel } from './review';
 import { ActiveSlot, SlotKind, buildSlotReport, reportPath, scheduledSlotAt, touch } from './slot-logic';
 import { isCompletedStatus, isTaskFile } from './tasknotes';
@@ -128,11 +128,15 @@ export class FocusSlots {
 		if (!(file instanceof TFile)) {
 			const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
 			if (folder && !app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder);
-			file = await app.vault.create(path, `# Sheiko report — ${localDateString(day)}\n`);
+			// No heading: the file name (the date) is already the note's title.
+			file = await app.vault.create(path, '');
 		}
 		if (!(file instanceof TFile)) return null;
 		const block = lines.join('\n');
-		await app.vault.process(file, (c) => `${c.replace(/\s+$/, '')}\n\n${block}\n`);
+		await app.vault.process(file, (c) => {
+			const before = c.replace(/\s+$/, '');
+			return before ? `${before}\n\n${block}\n` : `${block}\n`;
+		});
 		return path;
 	}
 
@@ -153,6 +157,15 @@ export class FocusSlots {
 	}
 
 	// ---------- Logging (only while a slot is active) ----------
+
+	/**
+	 * The hold rule, used by the plugin's promptSignoff and by the tests: automatic prompts
+	 * (on review, at the cutoff) are held while a slot runs; a prompt you asked for ('manual')
+	 * is never held. Returns true if the prompt was held.
+	 */
+	holdsPrompt(files: TFile[], reason: 'review' | 'cutoff' | 'manual'): boolean {
+		return reason !== 'manual' && this.hold(files);
+	}
 
 	/** Prompts held instead of shown. Returns true if held. */
 	hold(files: TFile[]): boolean {

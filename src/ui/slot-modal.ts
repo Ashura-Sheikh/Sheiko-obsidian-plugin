@@ -35,7 +35,7 @@ export class StartSlotModal extends Modal {
 			});
 			t.inputEl.type = 'number';
 		});
-		for (const n of [15, 30, 60, 90]) len.addExtraButton((b) => b.setIcon('clock').setTooltip(`${n} minutes`).onClick(() => {
+		for (const n of [15, 30, 60, 90]) len.addButton((b) => b.setButtonText(`${n}m`).setTooltip(`${n} minutes`).onClick(() => {
 			minutes = n;
 			const input = len.controlEl.querySelector('input');
 			if (input) input.value = String(n);

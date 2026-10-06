@@ -223,7 +223,7 @@ export default class SheikoPlugin extends Plugin {
 	 */
 	promptSignoff(files: TFile[], reason: SignoffReason): void {
 		if (files.length === 0) return;
-		if (reason !== 'manual' && this.slots.hold(files)) return;
+		if (this.slots.holdsPrompt(files, reason)) return;
 		if (this.signoff) {
 			this.signoff.add(files);
 			return;

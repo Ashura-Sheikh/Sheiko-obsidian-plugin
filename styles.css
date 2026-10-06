@@ -24,9 +24,10 @@
     margin-bottom: 0.75em;
 }
 .sheiko-signoff .sheiko-card .setting-item { border-top: none; }
+.sheiko-signoff .sheiko-card-worker { margin: -0.4em 0 0.4em; }
 .sheiko-signoff .sheiko-worker {
     display: inline-block;
-    margin-left: 0.6em;
+    white-space: nowrap;
     padding: 0 0.5em;
     border-radius: var(--radius-s);
     font-size: var(--font-ui-smaller);

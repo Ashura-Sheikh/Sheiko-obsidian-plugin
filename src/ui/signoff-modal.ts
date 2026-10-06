@@ -78,7 +78,6 @@ export class SignoffModal extends Modal {
 
 		const worker = classifyWorker(fm[s.workerField], s.agentNames);
 		const head = new Setting(card).setName(file.basename);
-		head.nameEl.createSpan({ cls: `sheiko-worker sheiko-worker-${worker.kind}`, text: workerLabel(worker) });
 		head
 			.addButton((b) =>
 				b.setButtonText('Open').onClick(() => {
@@ -100,6 +99,11 @@ export class SignoffModal extends Modal {
 						if (await this.plugin.tracker.setStatus(file, s.doneStatus, s.identity ? `signed off by ${s.identity}` : 'signed off')) this.done(file);
 					}),
 			);
+
+		// Own line under the header, so the badge doesn't wrap inside the narrow name column.
+		card
+			.createDiv({ cls: 'sheiko-card-worker' })
+			.createSpan({ cls: `sheiko-worker sheiko-worker-${worker.kind}`, text: workerLabel(worker) });
 
 		const details = card.createEl('details', { cls: 'sheiko-card-details' });
 		details.open = !folded;

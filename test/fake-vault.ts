@@ -192,9 +192,9 @@ export class FakeVault {
 			},
 			taskNotes,
 			saveData: () => Promise.resolve(),
-			promptSignoff: (files: RealTFile[], reason: string) => {
-				// Same hold rule as the real plugin: automatic prompts are held during a slot.
-				if (reason !== 'manual' && plugin.slots.hold(files)) return;
+			promptSignoff: (files: RealTFile[], reason: 'review' | 'cutoff' | 'manual') => {
+				// Calls the plugin's own hold rule (FocusSlots.holdsPrompt), not a copy of it.
+				if (plugin.slots.holdsPrompt(files, reason)) return;
 				self.prompts.push({ paths: files.map((f) => f.path), reason });
 			},
 			refreshStatusBar: () => undefined,

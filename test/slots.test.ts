@@ -57,9 +57,9 @@ test('report block: sections, "None" when empty, gaps and the open-only caveat l
 	assert.match(out, /^## 🎧 Deep work — 14:00–15:00 \(manual\)/);
 	assert.match(out, /ended early \(planned until 15:30\)/);
 	assert.match(out, /Obsidian was closed 14:20–14:40/);
-	assert.match(out, /- 14:10 \[\[T\/A\|A\]\] — AI agent: test-agent-alpha/);
+	assert.match(out, /- 14:10 · in-progress → in-review · AI agent: test-agent-alpha · \[\[T\/A\|A\]\]/);
 	assert.match(out, /\*\*Closed\*\*\n\n- None/);
-	assert.match(out, /Markdown files touched \(1\)\*\*\n\n- \[\[T\/A\|A\]\] — modified ×2/);
+	assert.match(out, /Markdown files touched \(1\)\*\*\n\n- modified ×2 · \[\[T\/A\|A\]\]/);
 	assert.ok(out.endsWith(TOUCHED_CAVEAT));
 	assert.equal(reportPath('Sheiko Reports/', new Date(2026, 9, 5)), 'Sheiko Reports/2026-10-05.md');
 });
@@ -90,9 +90,9 @@ test('during a slot: the review prompt is held and logged; ending writes the rep
 	assert.equal(v.data.activeSlot, null);
 	const report = [...v.notes.entries()].find(([p]) => p.startsWith('Sheiko Reports/'));
 	assert.ok(report, 'report note written');
-	assert.match(report[1], /^# Sheiko report — \d{4}-\d{2}-\d{2}/);
+	assert.match(report[1], /^## ☕ Break/); // no extra heading: the file name is the title
 	assert.match(report[1], /☕ Break/);
-	assert.match(report[1], /Moved to review \(sign-off held\)\*\*\n\n- \d\d:\d\d \[\[TaskNotes\/Tasks\/A\|A\]\]/);
+	assert.match(report[1], /Moved to review \(sign-off held\)\*\*\n\n- \d\d:\d\d · in-progress → in-review · AI agent: test-agent-alpha · \[\[TaskNotes\/Tasks\/A\|A\]\]/);
 	assert.match(report[1], /Markdown files touched \(1\)/);
 	assert.deepEqual(v.prompts, [{ paths: [T], reason: 'manual' }]); // shown once the slot ended
 });
@@ -140,4 +140,14 @@ test('scheduled slot starts once per day+slot, and not when writes are blocked',
 	await blocked.plugin.tracker.reconcile();
 	await blocked.plugin.slots.tick(today);
 	assert.equal(blocked.data.activeSlot, null);
+});
+
+test('hold rule: a prompt you ask for during a slot is shown, not held', async () => {
+	const v = await vaultWithSlot();
+	const now = new Date();
+	v.plugin.slots.start('deep-work', new Date(now.getTime() + 30 * 60 * 1000), 'manual', now);
+	v.plugin.promptSignoff([v.file(T)], 'manual');
+	v.plugin.promptSignoff([v.file(T)], 'cutoff');
+	assert.deepEqual(v.prompts, [{ paths: [T], reason: 'manual' }]);
+	assert.deepEqual(v.data.activeSlot?.held, [T]);
 });
