@@ -79,7 +79,7 @@ Start a slot from the 🎧 status-bar item or the command palette, or schedule s
 
 <p>
   <img src="docs/screenshots/slot-start.png" alt="Start a break or deep-work slot: type, minutes, and 15m / 30m / 60m / 90m buttons" width="49%">
-  <img src="docs/screenshots/slot-end.png" alt="Ending a break early: counts so far, with Keep going and End now and write report" width="49%">
+  <img src="docs/screenshots/slot-end.png" alt="Ending a deep-work slot early: counts so far, with Keep going and End now and write report" width="49%">
 </p>
 
 ![A slot report block: moved to review with the worker, closed, other status changes, came due, and Markdown files touched, ending with the closed-while-Obsidian-was-shut caveat](docs/screenshots/slot-report.png)
@@ -132,7 +132,7 @@ Statuses and field names are read from TaskNotes' settings rather than hardcoded
 - **TaskNotes** installed and enabled (tested on 4.13.4)
 - Obsidian's Daily Notes settings (folder and date format) are used for the Rolled Over summary
 
-![Installed plugins: Sheiko Task Lifecycle v0.1.0 alongside TaskNotes 4.13.4 and Tasks](docs/screenshots/installed-plugins.png)
+![Installed plugins: Sheiko Task Lifecycle v0.2.0 by Sheikh M Sahil, enabled](docs/screenshots/installed-plugins.png)
 
 ## Compatibility
 
