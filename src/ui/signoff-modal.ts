@@ -2,6 +2,7 @@ import { App, Modal, Setting, TFile } from 'obsidian';
 import type SheikoPlugin from '../main';
 import { formatContextLine, formatMinutes, parseHistory, toLocalIso } from '../lifecycle';
 import { SENT_BACK_NOTE, classifyWorker, computeFacts, describeTask, latestContext, workerLabel } from '../review';
+import { isCardOpen, pruneCardStates, recordCardToggle } from '../signoff-logic';
 import { labelFor } from '../tasknotes';
 
 export type SignoffReason = 'review' | 'cutoff' | 'manual';
@@ -21,6 +22,8 @@ export class SignoffModal extends Modal {
 	private reason: SignoffReason;
 	/** Guards against overlapping async renders writing into the same container. */
 	private renderToken = 0;
+	/** Cards the user unfolded or folded, by task path, so a redraw doesn't reset them (0.2.2). */
+	private cardStates = new Map<string, boolean>();
 
 	constructor(app: App, plugin: SheikoPlugin, reason: SignoffReason) {
 		super(app);
@@ -30,11 +33,21 @@ export class SignoffModal extends Modal {
 
 	add(files: TFile[]): void {
 		for (const f of files) if (!this.files.some((x) => x.path === f.path)) this.files.push(f);
-		void this.render();
+		this.redraw();
+	}
+
+	/** Whether this window is on screen. A closed or never-opened window isn't (0.2.2). */
+	isShown(): boolean {
+		return this.containerEl.isConnected;
 	}
 
 	onOpen(): void {
-		void this.render();
+		this.redraw();
+	}
+
+	/** Redraws, logging a failure instead of dropping it silently (0.2.2). */
+	private redraw(): void {
+		this.render().catch((e: unknown) => console.error('[Sheiko] Sign-off window failed to draw:', e));
 	}
 
 	onClose(): void {
@@ -59,14 +72,35 @@ export class SignoffModal extends Modal {
 		if (token !== this.renderToken) return;
 
 		const { contentEl } = this;
+		// Keep the text box being typed in, its cursor and the scroll position across the redraw (0.2.2).
+		const focus = this.captureFocus();
+		const scroll = { modal: this.modalEl.scrollTop, content: contentEl.scrollTop };
 		contentEl.empty();
 		contentEl.addClass('sheiko-modal', 'sheiko-signoff');
 		this.titleEl.setText(files.length === 1 ? 'Sign-off needed' : `Sign-off needed: ${files.length} tasks`);
 		contentEl.createEl('p', { cls: 'sheiko-muted', text: this.intro() });
+		pruneCardStates(files.map((f) => f.path), this.cardStates);
 		files.forEach((file, i) => this.renderCard(contentEl, file, contents[i] ?? '', files.length > FOLD_ABOVE));
 		new Setting(contentEl)
 			.setDesc('Tasks left for later stay in the status bar count. Click it to come back here.')
 			.addButton((b) => b.setButtonText('Later').onClick(() => this.close()));
+		this.modalEl.scrollTop = scroll.modal;
+		contentEl.scrollTop = scroll.content;
+		if (focus) this.restoreFocus(focus);
+	}
+
+	private captureFocus(): { path: string; start: number; end: number } | null {
+		const el = this.contentEl.ownerDocument.activeElement;
+		if (!(el instanceof HTMLTextAreaElement) || !this.contentEl.contains(el)) return null;
+		const path = el.getAttribute('data-sheiko-path');
+		return path === null ? null : { path, start: el.selectionStart, end: el.selectionEnd };
+	}
+
+	private restoreFocus(focus: { path: string; start: number; end: number }): void {
+		const box = Array.from(this.contentEl.querySelectorAll('textarea')).find((t) => t.getAttribute('data-sheiko-path') === focus.path);
+		if (!box) return;
+		box.focus({ preventScroll: true });
+		box.setSelectionRange(focus.start, focus.end);
 	}
 
 	private renderCard(parent: HTMLElement, file: TFile, content: string, folded: boolean): void {
@@ -106,7 +140,11 @@ export class SignoffModal extends Modal {
 			.createSpan({ cls: `sheiko-worker sheiko-worker-${worker.kind}`, text: workerLabel(worker) });
 
 		const details = card.createEl('details', { cls: 'sheiko-card-details' });
-		details.open = !folded;
+		details.open = isCardOpen(file.path, folded, this.cardStates);
+		details.addEventListener('toggle', () => {
+			// A card from a previous redraw can still fire after it's been replaced; ignore it.
+			if (details.isConnected) recordCardToggle(file.path, details.open, folded, this.cardStates);
+		});
 		details.createEl('summary', { text: 'Summary and context' });
 
 		const desc = describeTask(content);
@@ -151,11 +189,12 @@ export class SignoffModal extends Modal {
 					});
 				t.inputEl.rows = 2;
 				t.inputEl.addClass('sheiko-context-input');
+				t.inputEl.setAttr('data-sheiko-path', file.path);
 			})
 			.addButton((b) =>
 				b.setButtonText('Add').onClick(async () => {
 					if (!drafts.get(file.path)?.trim()) return;
-					if (await this.saveDraft(file)) void this.render();
+					if (await this.saveDraft(file)) this.redraw();
 				}),
 			);
 	}
@@ -177,6 +216,6 @@ export class SignoffModal extends Modal {
 	private done(file: TFile): void {
 		this.files = this.files.filter((f) => f.path !== file.path);
 		if (this.files.length === 0) this.close();
-		else void this.render();
+		else this.redraw();
 	}
 }

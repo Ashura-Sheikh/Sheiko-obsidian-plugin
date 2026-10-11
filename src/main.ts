@@ -4,6 +4,7 @@ import { Roller } from './roller';
 import { kindIcon, kindLabel, normalizeActiveSlot } from './slot-logic';
 import { FocusSlots } from './slots';
 import { DEFAULT_SETTINGS, PluginData, SheikoSettingTab, SheikoSettings } from './settings';
+import { signoffRoute, signoffRouteLog } from './signoff-logic';
 import { TaskNotesConfig, isTaskFile, loadTaskNotesConfig, statusOf } from './tasknotes';
 import { Tracker } from './tracker';
 import { LifecycleModal, UnwitnessedModal } from './ui/lifecycle-modal';
@@ -225,14 +226,27 @@ export default class SheikoPlugin extends Plugin {
 	 */
 	promptSignoff(files: TFile[], reason: SignoffReason): void {
 		if (files.length === 0) return;
-		if (this.slots.holdsPrompt(files, reason)) return;
-		if (this.signoff) {
+		const held = this.slots.holdsPrompt(files, reason);
+		const route = signoffRoute(held, this.signoff ? this.signoff.isShown() : null);
+		const staleDropped = route === 'open' && this.signoff !== null;
+		console.debug(signoffRouteLog(route, reason, files.length, staleDropped));
+		if (route === 'held') return;
+		if (route === 'add' && this.signoff) {
 			this.signoff.add(files);
 			return;
 		}
-		this.signoff = new SignoffModal(this.app, this, reason);
-		this.signoff.add(files);
-		this.signoff.open();
+		// No window, or the one still referenced is no longer on screen (0.2.2 fix): open a new one.
+		const modal = new SignoffModal(this.app, this, reason);
+		this.signoff = modal;
+		try {
+			modal.add(files);
+			modal.open();
+		} catch (e) {
+			// Don't keep a reference to a window that never opened, or the next prompt would be lost too.
+			if (this.signoff === modal) this.signoff = null;
+			console.error('[Sheiko] Sign-off window failed to open:', e);
+			new Notice('Sheiko: the sign-off window failed to open. Click the status bar count to try again.');
+		}
 	}
 
 	signoffClosed(modal: SignoffModal): void {

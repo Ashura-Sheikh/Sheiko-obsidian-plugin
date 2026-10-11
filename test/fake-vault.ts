@@ -10,6 +10,7 @@ import { TaskNotesConfig, loadTaskNotesConfig } from '../src/tasknotes';
 import { Tracker } from '../src/tracker';
 import { Roller } from '../src/roller';
 import { FocusSlots } from '../src/slots';
+import { SignoffRoute, signoffRoute } from '../src/signoff-logic';
 import type SheikoPlugin from '../src/main';
 import type { TFile as RealTFile } from 'obsidian';
 
@@ -100,6 +101,10 @@ export class FakeVault {
 	plugin!: SheikoPlugin;
 	data!: PluginData;
 	prompts: { paths: string[]; reason: string }[] = [];
+	/** Every routing decision promptSignoff made, in order (0.2.2). */
+	routes: SignoffRoute[] = [];
+	/** Stand-in for the sign-off window the plugin holds a reference to. `shown: false` = closed but still referenced. */
+	signoffWindow: { shown: boolean } | null = null;
 
 	constructor(opts: FakeOptions = {}) {
 		const installed = opts.taskNotesInstalled ?? true;
@@ -193,8 +198,14 @@ export class FakeVault {
 			taskNotes,
 			saveData: () => Promise.resolve(),
 			promptSignoff: (files: RealTFile[], reason: 'review' | 'cutoff' | 'manual') => {
-				// Calls the plugin's own hold rule (FocusSlots.holdsPrompt), not a copy of it.
-				if (plugin.slots.holdsPrompt(files, reason)) return;
+				if (files.length === 0) return;
+				// Calls the plugin's own hold rule (FocusSlots.holdsPrompt) and routing rule
+				// (signoffRoute), the same two calls main.ts makes, not copies of them.
+				const held = plugin.slots.holdsPrompt(files, reason);
+				const route = signoffRoute(held, self.signoffWindow ? self.signoffWindow.shown : null);
+				self.routes.push(route);
+				if (route === 'held') return;
+				if (route === 'open') self.signoffWindow = { shown: true };
 				self.prompts.push({ paths: files.map((f) => f.path), reason });
 			},
 			refreshStatusBar: () => undefined,
