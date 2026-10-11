@@ -245,7 +245,7 @@ export default class SheikoPlugin extends Plugin {
 			// Don't keep a reference to a window that never opened, or the next prompt would be lost too.
 			if (this.signoff === modal) this.signoff = null;
 			console.error('[Sheiko] Sign-off window failed to open:', e);
-			new Notice('Sheiko: the sign-off window failed to open. Click the status bar count to try again.');
+			new Notice("Sheiko: the sign-off window failed to open. Use 'Show tasks waiting for sign-off' from the command palette, or click the status-bar count, to try again.");
 		}
 	}
 

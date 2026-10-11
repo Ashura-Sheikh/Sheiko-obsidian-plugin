@@ -91,7 +91,8 @@ export class SignoffModal extends Modal {
 
 	private captureFocus(): { path: string; start: number; end: number } | null {
 		const el = this.contentEl.ownerDocument.activeElement;
-		if (!(el instanceof HTMLTextAreaElement) || !this.contentEl.contains(el)) return null;
+		// instanceOf, not instanceof: works for elements in an Obsidian popout window too.
+		if (!el?.instanceOf(HTMLTextAreaElement) || !this.contentEl.contains(el)) return null;
 		const path = el.getAttribute('data-sheiko-path');
 		return path === null ? null : { path, start: el.selectionStart, end: el.selectionEnd };
 	}
