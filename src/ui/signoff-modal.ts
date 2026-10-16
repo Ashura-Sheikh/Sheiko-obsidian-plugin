@@ -1,4 +1,4 @@
-import { App, Modal, Setting, TFile } from 'obsidian';
+import { App, ButtonComponent, Modal, Setting, TFile } from 'obsidian';
 import type SheikoPlugin from '../main';
 import { formatContextLine, formatDuration, parseHistory, toLocalIso } from '../lifecycle';
 import { SENT_BACK_NOTE, classifyWorker, computeFacts, describeTask, latestContext, workerLabel } from '../review';
@@ -112,28 +112,24 @@ export class SignoffModal extends Modal {
 		const card = parent.createDiv({ cls: 'sheiko-card' });
 
 		const worker = classifyWorker(fm[s.workerField], s.agentNames);
-		const head = new Setting(card).setName(file.basename);
-		head
-			.addButton((b) =>
-				b.setButtonText('Open').onClick(() => {
-					void this.app.workspace.getLeaf(false).openFile(file);
-				}),
-			)
-			.addButton((b) =>
-				b.setButtonText(`Send back to ${labelFor(cfg, s.progressStatus)}`).onClick(async () => {
-					if (!(await this.saveDraft(file))) return;
-					if (await this.plugin.tracker.setStatus(file, s.progressStatus, SENT_BACK_NOTE)) this.done(file);
-				}),
-			)
-			.addButton((b) =>
-				b
-					.setButtonText('Approve and close')
-					.setCta()
-					.onClick(async () => {
-						if (!(await this.saveDraft(file))) return;
-						if (await this.plugin.tracker.setStatus(file, s.doneStatus, s.identity ? `signed off by ${s.identity}` : 'signed off')) this.done(file);
-					}),
-			);
+		// 0.2.3 (#5): the title gets its own full-width line, cut with "…" if too long
+		// (full title on hover); the buttons sit in a row below it instead of squeezing it.
+		card.createDiv({ cls: 'sheiko-card-title', text: file.basename, attr: { title: file.basename } });
+		const actions = card.createDiv({ cls: 'sheiko-card-actions' });
+		new ButtonComponent(actions).setButtonText('Open').onClick(() => {
+			void this.app.workspace.getLeaf(false).openFile(file);
+		});
+		new ButtonComponent(actions).setButtonText(`Send back to ${labelFor(cfg, s.progressStatus)}`).onClick(async () => {
+			if (!(await this.saveDraft(file))) return;
+			if (await this.plugin.tracker.setStatus(file, s.progressStatus, SENT_BACK_NOTE)) this.done(file);
+		});
+		new ButtonComponent(actions)
+			.setButtonText('Approve and close')
+			.setCta()
+			.onClick(async () => {
+				if (!(await this.saveDraft(file))) return;
+				if (await this.plugin.tracker.setStatus(file, s.doneStatus, s.identity ? `signed off by ${s.identity}` : 'signed off')) this.done(file);
+			});
 
 		// Own line under the header, so the badge doesn't wrap inside the narrow name column.
 		card

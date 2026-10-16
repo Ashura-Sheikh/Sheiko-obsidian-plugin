@@ -24,7 +24,21 @@
     margin-bottom: 0.75em;
 }
 .sheiko-signoff .sheiko-card .setting-item { border-top: none; }
-.sheiko-signoff .sheiko-card-worker { margin: -0.4em 0 0.4em; }
+/* 0.2.3 (#5): title on its own line, buttons in a row below it. */
+.sheiko-signoff .sheiko-card-title {
+    padding-top: 0.6em;
+    font-weight: var(--font-semibold);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sheiko-signoff .sheiko-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    margin: 0.5em 0;
+}
+.sheiko-signoff .sheiko-card-worker { margin: 0 0 0.4em; }
 .sheiko-signoff .sheiko-worker {
     display: inline-block;
     white-space: nowrap;
