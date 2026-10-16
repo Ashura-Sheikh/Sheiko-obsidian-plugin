@@ -2,7 +2,7 @@
 
 An Obsidian plugin that works **alongside [TaskNotes](https://github.com/callumalpass/tasknotes)** to add task-lifecycle tracking and a daily auto-roll for unfinished tasks.
 
-> **Status: early release (v0.2.2), desktop only.** Plugin ID `sheiko-task-lifecycle`. Tested against TaskNotes **4.13.4**. Listed in the [Obsidian Community directory](https://community.obsidian.md/plugins/sheiko-task-lifecycle).
+> **Status: early release (v0.2.3), desktop only.** Plugin ID `sheiko-task-lifecycle`. Tested against TaskNotes **4.13.4**. Listed in the [Obsidian Community directory](https://community.obsidian.md/plugins/sheiko-task-lifecycle).
 
 ![The lifecycle window on a closed task: Context, Closure, and time per status split into working, overnight and weekend](docs/screenshots/lifecycle-window.png)
 
@@ -37,15 +37,15 @@ Once allowed, it writes to **task notes** (frontmatter: `completedDate`, `closed
 - **Status history.** An append-only `## Status History` section with ISO-timestamped transitions. Clicking the same status again isn't logged.
 - **Closure fields.** `completedDate` (full ISO), `closedBy` (only if an identity is set) and `timeToCloseMinutes` are written **only for a close Sheiko saw happen live**. Sheiko never overwrites a close written by hand or by another tool. Closes it recorded are marked `closureSource: sheiko`, and a reopen clears only those.
 - **Time per status, in three buckets.** Time is split into working hours, overnight and weekend, written as `timeWorkingMinutes`, `timeOvernightMinutes` and `timeWeekendMinutes`. The three always add up to `timeToCloseMinutes`.
-- **Lifecycle Summary.** A `## Lifecycle Summary` section (closure plus time per status), refreshed in place. It's written automatically on a live close, or on demand.
+- **Lifecycle Summary.** A `## Lifecycle Summary` section (closure plus time per status), refreshed in place. It's written automatically on a live close, or on demand. Times under an hour show seconds (`9s`, `6m 28s`); longer ones show `2h 5m`, `1d 3h`. For a close Sheiko didn't see live, the time to close and its split are worked out from Created and Completed and marked as worked out. Missing data shows `—`, never `0m`. The frontmatter fields stay in whole minutes.
 - **Startup catch-up.** Status changes made while Obsidian was closed are logged as "detected at startup", never given an invented time. Time spent in a status that was skipped over is shown as a **gap**, not estimated. Closes Sheiko didn't see happen are listed and flagged, never filled in.
 
 ### 2. Auto-stage and sign-off (Phase 2)
 
 - **Auto-stage (forward only).** Starting a TaskNotes timer moves the task to the working status. Ticking the last unticked checkbox moves it to the review status. Moves happen only when something changes, never just because of existing state, and never backwards or out of a completed status.
-- **Sign-off window.** It opens when a task enters review, and at each day's end time for anything still waiting. Each task gets a card with:
+- **Sign-off window.** It opens when a task enters review, and at each day's end time for anything still waiting. Each task gets a card with its title on its own line (a long title is cut with "…"; hover for the full title), the buttons below it, and:
   - **Who worked on it**, read from a frontmatter field (default `assignedTo`). Names you list as AI agents show as *AI agent*, any other name as *Human*, and an empty field as *Worker: not recorded*. It's never guessed.
-  - **Summary and context:** the first lines of the task's description, the latest Context entry, and the facts: time in progress, in review since, checklist progress, due or overdue, and how many times it was sent back. Cards start folded when more than 3 tasks are waiting.
+  - **Summary and context:** the task's description (its first section, shown as formatted Markdown; template-only lines such as Meta Bind `INPUT[…]` fields are skipped; long descriptions are collapsed, with *Show more*), the latest Context entry, and the facts: time in progress, in review since, checklist progress, due or overdue, and how many times it was sent back. Cards start folded when more than 3 tasks are waiting.
   - **A context box** for a note while you decide. It's saved to the task's Context before *Approve* or *Send back* runs.
 
   Buttons: *Approve and close*, *Send back*, *Open*, *Later*. **Closing a task is always a user click, never automatic.**
@@ -169,7 +169,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs and open pull requ
 
 **Source layout (`src/`):** `main.ts` (plugin entry, commands, cutoff timer), `tracker.ts` (status-change detection, closure, startup catch-up), `lifecycle.ts` (history, time buckets, summary), `roll.ts` / `roller.ts` (auto-roll rules and engine), `review.ts` (sign-off card summaries and worker labels), `slots.ts` / `slot-logic.ts` (break and deep-work slots and reports), `tasknotes.ts` (reading TaskNotes' config), `settings.ts`, `ui/` (lifecycle, sign-off and slot windows).
 
-**Tests (`test/`):** 54 tests run the real tracker, auto-roll and slot code against an in-memory vault and a stand-in for the `obsidian` module (`test/obsidian-mock.ts`). They cover the code that edits notes: closure fields, reopen, startup catch-up, dry run, the edit limit, what does and doesn't roll, sign-off summaries, sign-off window routing and card fold state, and slot holds and reports. The repo's build workflow (`.github/workflows/lint.yml`) also runs them.
+**Tests (`test/`):** 69 tests run the real tracker, auto-roll and slot code against an in-memory vault and a stand-in for the `obsidian` module (`test/obsidian-mock.ts`). They cover the code that edits notes: closure fields, reopen, startup catch-up, dry run, the edit limit, what does and doesn't roll, sign-off summaries, sign-off window routing and card fold state, time-split formatting and rounding, sign-off descriptions, and slot holds and reports. The repo's build workflow (`.github/workflows/lint.yml`) also runs them.
 
 ## Licence
 
