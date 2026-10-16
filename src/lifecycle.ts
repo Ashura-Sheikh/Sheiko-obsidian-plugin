@@ -196,14 +196,14 @@ function overlapMs(a0: number, a1: number, b0: number, b1: number): number {
 }
 
 /**
- * Splits [start, end) into working / overnight / weekend minutes.
+ * Splits [start, end) into working / overnight / weekend milliseconds, unrounded.
  * Saturday and Sunday are always weekend. Mon–Fri time inside that day's
  * start–end window is working; the rest is overnight.
- * The three buckets always add up to minutesBetween(start, end).
+ * The three buckets always add up to end − start exactly.
  */
-export function splitBuckets(start: Date, end: Date, schedule: WeekSchedule): Buckets {
+export function splitBucketsMs(start: Date, end: Date, schedule: WeekSchedule): Buckets {
 	const ms: Buckets = { working: 0, overnight: 0, weekend: 0 };
-	if (end.getTime() <= start.getTime()) return { working: 0, overnight: 0, weekend: 0 };
+	if (end.getTime() <= start.getTime()) return ms;
 	let day = new Date(start.getFullYear(), start.getMonth(), start.getDate());
 	const s = start.getTime();
 	const e = end.getTime();
@@ -226,6 +226,16 @@ export function splitBuckets(start: Date, end: Date, schedule: WeekSchedule): Bu
 		}
 		day = next;
 	}
+	return ms;
+}
+
+/**
+ * The same split in whole minutes, as written to frontmatter.
+ * The three buckets always add up to minutesBetween(start, end).
+ */
+export function splitBuckets(start: Date, end: Date, schedule: WeekSchedule): Buckets {
+	if (end.getTime() <= start.getTime()) return { working: 0, overnight: 0, weekend: 0 };
+	const ms = splitBucketsMs(start, end, schedule);
 	const total = minutesBetween(start, end);
 	const out: Buckets = {
 		working: Math.round(ms.working / 60000),
@@ -246,14 +256,21 @@ export function splitBuckets(start: Date, end: Date, schedule: WeekSchedule): Bu
 
 export interface StatusDuration {
 	status: string;
+	/** Whole minutes, rounded once from `ms` (0.2.3: no longer the sum of per-segment roundings). */
 	minutes: number;
 	buckets: Buckets;
+	/** Exact time in this status, in milliseconds (0.2.3). */
+	ms: number;
+	/** Exact working / overnight / weekend split, in milliseconds; always sums to `ms`. */
+	bucketsMs: Buckets;
 }
 
 export interface DurationReport {
 	perStatus: StatusDuration[];
 	/** Time that can't be attributed: ends in a change made while Obsidian was closed. */
 	gapMinutes: number;
+	/** The same gap in milliseconds (0.2.3). */
+	gapMs: number;
 	/** True if there is no Status History at all. */
 	untracked: boolean;
 	/** The current (open-ended) status, if any. */
@@ -267,18 +284,22 @@ export interface DurationReport {
  */
 export function computeDurations(history: Transition[], now: Date, schedule: WeekSchedule): DurationReport {
 	const perStatus = new Map<string, StatusDuration>();
-	let gapMinutes = 0;
+	let gapMs = 0;
+	// 0.2.3: accumulate exact milliseconds and round once at the end, so short stays
+	// aren't lost to per-segment rounding and the buckets still sum to the total.
 	const add = (status: string, a: Date, b: Date): void => {
 		const cur = perStatus.get(status) ?? {
 			status,
 			minutes: 0,
 			buckets: { working: 0, overnight: 0, weekend: 0 },
+			ms: 0,
+			bucketsMs: { working: 0, overnight: 0, weekend: 0 },
 		};
-		const bk = splitBuckets(a, b, schedule);
-		cur.minutes += minutesBetween(a, b);
-		cur.buckets.working += bk.working;
-		cur.buckets.overnight += bk.overnight;
-		cur.buckets.weekend += bk.weekend;
+		const bk = splitBucketsMs(a, b, schedule);
+		cur.ms += b.getTime() - a.getTime();
+		cur.bucketsMs.working += bk.working;
+		cur.bucketsMs.overnight += bk.overnight;
+		cur.bucketsMs.weekend += bk.weekend;
 		perStatus.set(status, cur);
 	};
 	for (let i = 0; i < history.length; i++) {
@@ -288,15 +309,24 @@ export function computeDurations(history: Transition[], now: Date, schedule: Wee
 		const segEnd = next ? next.at : now;
 		if (segEnd.getTime() <= t.at.getTime()) continue;
 		if (next && next.kind === 'detected') {
-			gapMinutes += minutesBetween(t.at, segEnd);
+			gapMs += segEnd.getTime() - t.at.getTime();
 		} else {
 			add(t.to, t.at, segEnd);
 		}
 	}
+	for (const d of perStatus.values()) {
+		const [total, working, overnight, weekend] = roundToSum(
+			[d.bucketsMs.working, d.bucketsMs.overnight, d.bucketsMs.weekend],
+			60000,
+		);
+		d.minutes = total ?? 0;
+		d.buckets = { working: working ?? 0, overnight: overnight ?? 0, weekend: weekend ?? 0 };
+	}
 	const last = history[history.length - 1];
 	return {
 		perStatus: [...perStatus.values()],
-		gapMinutes,
+		gapMinutes: Math.round(gapMs / 60000),
+		gapMs,
 		untracked: history.length === 0,
 		current: last ? last.to : null,
 	};
@@ -308,6 +338,115 @@ export function formatMinutes(total: number): string {
 	const h = Math.floor((total % 1440) / 60);
 	const m = total % 60;
 	return [d ? `${d}d` : '', h ? `${h}h` : '', m ? `${m}m` : ''].filter(Boolean).join(' ');
+}
+
+// ---------- 0.2.3: durations shown to the second when it matters ----------
+
+const SECOND = 1000;
+const MINUTE = 60000;
+const HOUR = 3600000;
+
+/**
+ * Rounds `parts` (milliseconds) to whole `unit`s so they add up to the rounded total.
+ * Largest remainder: floor each part, then hand the leftover units to the parts with
+ * the biggest fractions. Returns [total, ...parts].
+ */
+export function roundToSum(parts: number[], unit: number): number[] {
+	const sum = parts.reduce((a, b) => a + b, 0);
+	const total = Math.round(sum / unit);
+	const floors = parts.map((p) => Math.floor(p / unit));
+	let left = total - floors.reduce((a, b) => a + b, 0);
+	const order = parts.map((p, i) => ({ i, frac: p / unit - Math.floor(p / unit) })).sort((a, b) => b.frac - a.frac);
+	for (const o of order) {
+		if (left <= 0) break;
+		floors[o.i] = (floors[o.i] ?? 0) + 1;
+		left--;
+	}
+	return [total, ...floors];
+}
+
+/** Whole seconds as text: `9s`, `6m 28s`, `6m`. */
+function formatSeconds(n: number): string {
+	if (n < 60) return `${n}s`;
+	const m = Math.floor(n / 60);
+	const r = n % 60;
+	return r ? `${m}m ${r}s` : `${m}m`;
+}
+
+/** Under an hour, seconds count; from an hour up, whole minutes as before. */
+function unitFor(totalMs: number): number {
+	return totalMs < HOUR - SECOND / 2 ? SECOND : MINUTE;
+}
+
+function formatIn(n: number, unit: number): string {
+	return unit === SECOND ? formatSeconds(n) : formatMinutes(n);
+}
+
+/**
+ * A duration as text: seconds under a minute (`9s`), minutes and seconds under an
+ * hour (`6m 28s`), and the existing format from an hour up (`2h 5m`, `1d 3h`).
+ * Never shows milliseconds: timestamps are only stored to the second.
+ */
+export function formatDuration(ms: number): string {
+	const unit = unitFor(Math.max(0, ms));
+	return formatIn(Math.round(Math.max(0, ms) / unit), unit);
+}
+
+export interface SplitText {
+	total: string;
+	working: string;
+	overnight: string;
+	weekend: string;
+}
+
+/**
+ * A total and its working / overnight / weekend split, formatted in one unit chosen
+ * from the total, and rounded so the three parts always add up to the total shown.
+ */
+export function formatSplit(b: Buckets): SplitText {
+	const totalMs = b.working + b.overnight + b.weekend;
+	const unit = unitFor(totalMs);
+	const [total, working, overnight, weekend] = roundToSum([b.working, b.overnight, b.weekend], unit);
+	return {
+		total: formatIn(total ?? 0, unit),
+		working: formatIn(working ?? 0, unit),
+		overnight: formatIn(overnight ?? 0, unit),
+		weekend: formatIn(weekend ?? 0, unit),
+	};
+}
+
+export interface ClosureTimes {
+	split: SplitText;
+	/** True when the split was worked out from Created/Completed, not read from fields Sheiko wrote. */
+	workedOut: boolean;
+}
+
+/**
+ * The time to close and its split, for display.
+ * - Created and Completed both full timestamps: worked out from them, to the second when it
+ *   matters. `workedOut` says whether the stored split fields were missing (closed by hand).
+ * - Otherwise, the stored whole-minute fields if all present; else null (show "—", never "0m").
+ */
+export function closureTimes(
+	created: unknown,
+	completed: unknown,
+	stored: { working: unknown; overnight: unknown; weekend: unknown },
+	schedule: WeekSchedule,
+): ClosureTimes | null {
+	const hasStored = [stored.working, stored.overnight, stored.weekend].every((v) => typeof v === 'number');
+	const a = parseTimestamp(created);
+	const b = parseTimestamp(completed);
+	if (a && b && b.getTime() >= a.getTime()) {
+		return { split: formatSplit(splitBucketsMs(a, b, schedule)), workedOut: !hasStored };
+	}
+	if (!hasStored) return null;
+	const w = Number(stored.working);
+	const o = Number(stored.overnight);
+	const e = Number(stored.weekend);
+	return {
+		split: { total: formatMinutes(w + o + e), working: formatMinutes(w), overnight: formatMinutes(o), weekend: formatMinutes(e) },
+		workedOut: false,
+	};
 }
 
 // ---------- Lifecycle Summary (written into the note) ----------
@@ -375,13 +514,20 @@ export function buildSummary(inp: SummaryInput): string[] {
 		`| Completed | ${cell(c.completed)} |`,
 		`| Closed by | ${cell(c.closedBy)} |`,
 	];
-	if (typeof c.timeToClose === 'number') {
+	// 0.2.3: worked out to the second from Created/Completed when both are full timestamps;
+	// missing split fields show "—", never "0m".
+	const times = closureTimes(c.created, c.completed, { working: c.working, overnight: c.overnight, weekend: c.weekend }, inp.schedule);
+	const mins = typeof c.timeToClose === 'number' ? ` (${c.timeToClose} min)` : '';
+	if (times) {
 		out.push(
-			`| Time to close | ${formatMinutes(c.timeToClose)} (${c.timeToClose} min) |`,
-			`| – working | ${formatMinutes(Number(c.working ?? 0))} |`,
-			`| – overnight | ${formatMinutes(Number(c.overnight ?? 0))} |`,
-			`| – weekend | ${formatMinutes(Number(c.weekend ?? 0))} |`,
+			`| Time to close | ${times.split.total}${mins} |`,
+			`| – working | ${times.split.working} |`,
+			`| – overnight | ${times.split.overnight} |`,
+			`| – weekend | ${times.split.weekend} |`,
 		);
+		if (times.workedOut) out.push('| Split | Worked out from Created and Completed (not recorded at close) |');
+	} else if (typeof c.timeToClose === 'number') {
+		out.push(`| Time to close | ${formatMinutes(c.timeToClose)}${mins} |`, '| – working / overnight / weekend | — |');
 	} else {
 		out.push('| Time to close | — |');
 	}
@@ -398,16 +544,14 @@ export function buildSummary(inp: SummaryInput): string[] {
 	const rep = computeDurations(inp.history, inp.end, inp.schedule);
 	out.push('| Status | Total | Working | Overnight | Weekend |', '|---|---|---|---|---|');
 	for (const s of rep.perStatus) {
-		// Hide only the status the task is in at the snapshot (e.g. Done at close = 0m).
-		// A real earlier stage stays visible even if it rounds to 0m.
-		if (s.minutes <= 0 && s.status === rep.current) continue;
-		out.push(
-			`| ${cell(inp.label(s.status))} | ${formatMinutes(s.minutes)} | ${formatMinutes(s.buckets.working)} | ` +
-				`${formatMinutes(s.buckets.overnight)} | ${formatMinutes(s.buckets.weekend)} |`,
-		);
+		// Hide only the status the task is in at the snapshot (e.g. Done at close = 0s).
+		// A real earlier stage stays visible, now to the second (0.2.3).
+		if (s.ms <= 0 && s.status === rep.current) continue;
+		const sp = formatSplit(s.bucketsMs);
+		out.push(`| ${cell(inp.label(s.status))} | ${sp.total} | ${sp.working} | ${sp.overnight} | ${sp.weekend} |`);
 	}
-	if (rep.gapMinutes > 0) {
-		out.push(`| Gap (changed while Obsidian was closed) | ${formatMinutes(rep.gapMinutes)} | — | — | — |`);
+	if (rep.gapMs > 0) {
+		out.push(`| Gap (changed while Obsidian was closed) | ${formatDuration(rep.gapMs)} | — | — | — |`);
 	}
 	const first = inp.history[0];
 	if (first && first.kind !== 'created') {

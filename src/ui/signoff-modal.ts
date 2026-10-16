@@ -1,7 +1,16 @@
-import { App, Modal, Setting, TFile } from 'obsidian';
+import { App, ButtonComponent, Component, MarkdownRenderer, Modal, Setting, TFile } from 'obsidian';
 import type SheikoPlugin from '../main';
-import { formatContextLine, formatMinutes, parseHistory, toLocalIso } from '../lifecycle';
-import { SENT_BACK_NOTE, classifyWorker, computeFacts, describeTask, latestContext, workerLabel } from '../review';
+import { formatContextLine, formatDuration, parseHistory, toLocalIso } from '../lifecycle';
+import {
+	DESCRIPTION_SHORT,
+	SENT_BACK_NOTE,
+	classifyWorker,
+	computeFacts,
+	latestContext,
+	plainLength,
+	taskDescription,
+	workerLabel,
+} from '../review';
 import { isCardOpen, pruneCardStates, recordCardToggle } from '../signoff-logic';
 import { labelFor } from '../tasknotes';
 
@@ -24,6 +33,10 @@ export class SignoffModal extends Modal {
 	private renderToken = 0;
 	/** Cards the user unfolded or folded, by task path, so a redraw doesn't reset them (0.2.2). */
 	private cardStates = new Map<string, boolean>();
+	/** Descriptions the user expanded with "Show more", by task path, kept across redraws (0.2.3). */
+	private expanded = new Set<string>();
+	/** Owns the rendered Markdown in the cards; replaced on each redraw, unloaded on close (0.2.3). */
+	private md = new Component();
 
 	constructor(app: App, plugin: SheikoPlugin, reason: SignoffReason) {
 		super(app);
@@ -52,6 +65,7 @@ export class SignoffModal extends Modal {
 
 	onClose(): void {
 		this.renderToken++;
+		this.md.unload();
 		this.contentEl.empty();
 		this.plugin.signoffClosed(this);
 	}
@@ -75,11 +89,15 @@ export class SignoffModal extends Modal {
 		// Keep the text box being typed in, its cursor and the scroll position across the redraw (0.2.2).
 		const focus = this.captureFocus();
 		const scroll = { modal: this.modalEl.scrollTop, content: contentEl.scrollTop };
+		this.md.unload();
+		this.md = new Component();
+		this.md.load();
 		contentEl.empty();
 		contentEl.addClass('sheiko-modal', 'sheiko-signoff');
 		this.titleEl.setText(files.length === 1 ? 'Sign-off needed' : `Sign-off needed: ${files.length} tasks`);
 		contentEl.createEl('p', { cls: 'sheiko-muted', text: this.intro() });
 		pruneCardStates(files.map((f) => f.path), this.cardStates);
+		for (const path of [...this.expanded]) if (!files.some((f) => f.path === path)) this.expanded.delete(path);
 		files.forEach((file, i) => this.renderCard(contentEl, file, contents[i] ?? '', files.length > FOLD_ABOVE));
 		new Setting(contentEl)
 			.setDesc('Tasks left for later stay in the status bar count. Click it to come back here.')
@@ -112,28 +130,24 @@ export class SignoffModal extends Modal {
 		const card = parent.createDiv({ cls: 'sheiko-card' });
 
 		const worker = classifyWorker(fm[s.workerField], s.agentNames);
-		const head = new Setting(card).setName(file.basename);
-		head
-			.addButton((b) =>
-				b.setButtonText('Open').onClick(() => {
-					void this.app.workspace.getLeaf(false).openFile(file);
-				}),
-			)
-			.addButton((b) =>
-				b.setButtonText(`Send back to ${labelFor(cfg, s.progressStatus)}`).onClick(async () => {
-					if (!(await this.saveDraft(file))) return;
-					if (await this.plugin.tracker.setStatus(file, s.progressStatus, SENT_BACK_NOTE)) this.done(file);
-				}),
-			)
-			.addButton((b) =>
-				b
-					.setButtonText('Approve and close')
-					.setCta()
-					.onClick(async () => {
-						if (!(await this.saveDraft(file))) return;
-						if (await this.plugin.tracker.setStatus(file, s.doneStatus, s.identity ? `signed off by ${s.identity}` : 'signed off')) this.done(file);
-					}),
-			);
+		// 0.2.3 (#5): the title gets its own full-width line, cut with "…" if too long
+		// (full title on hover); the buttons sit in a row below it instead of squeezing it.
+		card.createDiv({ cls: 'sheiko-card-title', text: file.basename, attr: { title: file.basename } });
+		const actions = card.createDiv({ cls: 'sheiko-card-actions' });
+		new ButtonComponent(actions).setButtonText('Open').onClick(() => {
+			void this.app.workspace.getLeaf(false).openFile(file);
+		});
+		new ButtonComponent(actions).setButtonText(`Send back to ${labelFor(cfg, s.progressStatus)}`).onClick(async () => {
+			if (!(await this.saveDraft(file))) return;
+			if (await this.plugin.tracker.setStatus(file, s.progressStatus, SENT_BACK_NOTE)) this.done(file);
+		});
+		new ButtonComponent(actions)
+			.setButtonText('Approve and close')
+			.setCta()
+			.onClick(async () => {
+				if (!(await this.saveDraft(file))) return;
+				if (await this.plugin.tracker.setStatus(file, s.doneStatus, s.identity ? `signed off by ${s.identity}` : 'signed off')) this.done(file);
+			});
 
 		// Own line under the header, so the badge doesn't wrap inside the narrow name column.
 		card
@@ -148,8 +162,7 @@ export class SignoffModal extends Modal {
 		});
 		details.createEl('summary', { text: 'Summary and context' });
 
-		const desc = describeTask(content);
-		details.createEl('p', { cls: desc ? '' : 'sheiko-muted', text: desc || 'No description in the note.' });
+		this.renderDescription(details, file, content);
 
 		const ctx = latestContext(content);
 		if (ctx) {
@@ -169,7 +182,7 @@ export class SignoffModal extends Modal {
 			due: fm[cfg.field.due],
 		});
 		const parts: string[] = [];
-		if (facts.progressMinutes !== null) parts.push(`${labelFor(cfg, s.progressStatus)}: ${formatMinutes(facts.progressMinutes)}`);
+		if (facts.progressMs !== null) parts.push(`${labelFor(cfg, s.progressStatus)}: ${formatDuration(facts.progressMs)}`);
 		if (facts.inReviewSince) parts.push(`In review since ${toLocalIso(facts.inReviewSince).slice(0, 16).replace('T', ' ')}`);
 		if (facts.checklist) parts.push(`Checklist ${facts.checklist.done}/${facts.checklist.total}`);
 		if (facts.due) parts.push(`${facts.overdue ? '⚠️ Overdue' : 'Due'} ${facts.due.replace('T', ' ')}`);
@@ -205,6 +218,47 @@ export class SignoffModal extends Modal {
 	 * was a draft and it couldn't be written (writes blocked / dry run), so the caller
 	 * stops instead of changing status with the note silently dropped.
 	 */
+	/**
+	 * 0.2.3 (#6): the task's first real section, rendered as Markdown (template lines such as
+	 * Meta Bind fields skipped). Longer than about DESCRIPTION_SHORT characters: clamped,
+	 * with "Show more" / "Show less". Internal links open the note, like the Open button.
+	 */
+	private renderDescription(parent: HTMLElement, file: TFile, content: string): void {
+		const desc = taskDescription(content);
+		if (!desc) {
+			parent.createEl('p', { cls: 'sheiko-muted', text: 'No description in the note.' });
+			return;
+		}
+		const box = parent.createDiv({ cls: 'sheiko-desc' });
+		const body = box.createDiv({ cls: 'sheiko-desc-body markdown-rendered' });
+		const long = plainLength(desc) > DESCRIPTION_SHORT;
+		const open = this.expanded.has(file.path);
+		if (long && !open) body.addClass('is-clamped');
+		MarkdownRenderer.render(this.app, desc, body, file.path, this.md).catch((e: unknown) =>
+			console.error('[Sheiko] Could not render the task description:', e),
+		);
+		body.addEventListener('click', (ev) => {
+			// instanceOf, not instanceof: works in an Obsidian popout window too (see captureFocus).
+			const target = ev.target as Node | null;
+			if (!target?.instanceOf(HTMLElement)) return;
+			const link = target.closest('a.internal-link');
+			if (!link) return;
+			ev.preventDefault();
+			const href = link.getAttribute('data-href') ?? link.getAttribute('href');
+			if (href) void this.app.workspace.openLinkText(href, file.path, false);
+		});
+		if (!long) return;
+		const more = box.createEl('a', { cls: 'sheiko-desc-more', text: open ? 'Show less' : 'Show more', href: '#' });
+		more.addEventListener('click', (ev) => {
+			ev.preventDefault();
+			const nowOpen = body.hasClass('is-clamped');
+			body.toggleClass('is-clamped', !nowOpen);
+			more.setText(nowOpen ? 'Show less' : 'Show more');
+			if (nowOpen) this.expanded.add(file.path);
+			else this.expanded.delete(file.path);
+		});
+	}
+
 	private async saveDraft(file: TFile): Promise<boolean> {
 		const draft = this.plugin.signoffDrafts.get(file.path)?.trim();
 		if (!draft) return true;

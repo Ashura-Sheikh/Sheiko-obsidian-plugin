@@ -2,9 +2,11 @@ import { App, Modal, Notice, Setting, TFile } from 'obsidian';
 import type SheikoPlugin from '../main';
 import {
 	CONTEXT_HEADING,
+	closureTimes,
 	computeDurations,
 	formatContextLine,
-	formatMinutes,
+	formatDuration,
+	formatSplit,
 	parseHistory,
 	sectionLines,
 } from '../lifecycle';
@@ -84,13 +86,18 @@ export class LifecycleModal extends Modal {
 		row('Created', fm[cfg.field.dateCreated]);
 		row('Completed', fm[cfg.field.completedDate]);
 		row('Closed by', fm[FIELD.closedBy]);
-		const ttc = fm[FIELD.timeToClose];
+		// 0.2.3: to the second from Created/Completed when possible; a missing split shows "—", not "0m".
+		const times = closureTimes(
+			fm[cfg.field.dateCreated],
+			fm[cfg.field.completedDate],
+			{ working: fm[FIELD.working], overnight: fm[FIELD.overnight], weekend: fm[FIELD.weekend] },
+			this.plugin.settings.week,
+		);
 		row(
 			'Time to close',
-			typeof ttc === 'number'
-				? `${formatMinutes(ttc)}  (working ${formatMinutes(Number(fm[FIELD.working] ?? 0))} · overnight ${formatMinutes(
-						Number(fm[FIELD.overnight] ?? 0),
-					)} · weekend ${formatMinutes(Number(fm[FIELD.weekend] ?? 0))})`
+			times
+				? `${times.split.total}  (working ${times.split.working} · overnight ${times.split.overnight} · weekend ${times.split.weekend})` +
+						(times.workedOut ? ' — worked out from Created and Completed' : '')
 				: undefined,
 		);
 		row('Recorded by', fm[FIELD.source] === 'sheiko' ? 'Sheiko (seen live)' : fm[cfg.field.completedDate] ? 'Someone else, or by hand' : undefined);
@@ -120,15 +127,16 @@ export class LifecycleModal extends Modal {
 		for (const s of rep.perStatus) {
 			const tr = table.createEl('tr');
 			tr.createEl('td', { text: labelFor(cfg, s.status) + (s.status === rep.current ? ' (now)' : '') });
-			tr.createEl('td', { text: formatMinutes(s.minutes) });
-			tr.createEl('td', { text: formatMinutes(s.buckets.working) });
-			tr.createEl('td', { text: formatMinutes(s.buckets.overnight) });
-			tr.createEl('td', { text: formatMinutes(s.buckets.weekend) });
+			const sp = formatSplit(s.bucketsMs);
+			tr.createEl('td', { text: sp.total });
+			tr.createEl('td', { text: sp.working });
+			tr.createEl('td', { text: sp.overnight });
+			tr.createEl('td', { text: sp.weekend });
 		}
-		if (rep.gapMinutes > 0) {
+		if (rep.gapMs > 0) {
 			const tr = table.createEl('tr', { cls: 'sheiko-muted' });
 			tr.createEl('td', { text: 'Gap (changed while Obsidian was closed)' });
-			tr.createEl('td', { text: formatMinutes(rep.gapMinutes) });
+			tr.createEl('td', { text: formatDuration(rep.gapMs) });
 			tr.createEl('td', { text: 'Not split: the real change time is unknown', attr: { colspan: '3' } });
 		}
 		const first = history[0];
