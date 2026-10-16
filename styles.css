@@ -39,6 +39,16 @@
     margin: 0.5em 0;
 }
 .sheiko-signoff .sheiko-card-worker { margin: 0 0 0.4em; }
+/* 0.2.3 (#6): description rendered as Markdown, clamped to about 300 characters. */
+.sheiko-signoff .sheiko-desc-body > :first-child { margin-top: 0.4em; }
+.sheiko-signoff .sheiko-desc-body > :last-child { margin-bottom: 0.4em; }
+.sheiko-signoff .sheiko-desc-body.is-clamped {
+    max-height: calc(4.5 * var(--line-height-normal) * 1em);
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, black 65%, transparent);
+    mask-image: linear-gradient(to bottom, black 65%, transparent);
+}
+.sheiko-signoff .sheiko-desc-more { font-size: var(--font-ui-small); }
 .sheiko-signoff .sheiko-worker {
     display: inline-block;
     white-space: nowrap;

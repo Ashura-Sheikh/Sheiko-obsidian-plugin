@@ -62,18 +62,98 @@ export function workerLabel(w: Worker): string {
 const SHEIKO_HEADINGS = new Set([HISTORY_HEADING, CONTEXT_HEADING]);
 
 /**
+ * 0.2.3 (#6): a template-only line, such as a Meta Bind inline field
+ * (`` `INPUT[…]` `` / `` `VIEW[…]` ``), with or without a label like `**Status:**` in front.
+ * These say nothing about the task, so they're never shown as its description.
+ */
+export function isTemplateLine(line: string): boolean {
+	return /`(?:INPUT|VIEW)\[/.test(line);
+}
+
+/** Opening fence of a Meta Bind code block (```meta-bind, ```meta-bind-button, …). */
+const TEMPLATE_FENCE = /^(`{3,}|~{3,})\s*meta-bind/;
+
+function stripFrontmatter(content: string): string {
+	const fm = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(content);
+	return fm ? content.slice(fm[0].length) : content;
+}
+
+/** About this many characters of description show before "Show more" (0.2.3, #6). */
+export const DESCRIPTION_SHORT = 300;
+
+/**
+ * 0.2.3 (#6): the task's first real section, as Markdown, for the sign-off window.
+ * Starts at the first line that isn't a heading, template line, checkbox or Sheiko entry,
+ * and stops at the next heading. Line breaks and formatting are kept for rendering.
+ */
+export function taskDescription(content: string): string {
+	const out: string[] = [];
+	let started = false;
+	let inSummary = false;
+	let fence: string | null = null;
+	for (const raw of stripFrontmatter(content).split('\n')) {
+		const l = raw.trim();
+		if (fence !== null) {
+			if (l.startsWith(fence)) fence = null;
+			continue;
+		}
+		const tf = TEMPLATE_FENCE.exec(l);
+		if (tf) {
+			fence = tf[1] ?? '```';
+			continue;
+		}
+		if (/^#{1,6}\s/.test(l)) {
+			if (started) break;
+			inSummary = l === SUMMARY_HEADING;
+			continue;
+		}
+		if (inSummary) continue;
+		if (l === '') {
+			if (started && out[out.length - 1] !== '') out.push('');
+			continue;
+		}
+		if (SHEIKO_HEADINGS.has(l) || isHistoryEntry(l) || isContextEntry(l) || isTemplateLine(l)) continue;
+		if (/^[-*+]\s+\[.\]/.test(l)) continue; // checkbox: counted in the facts line instead
+		started = true;
+		out.push(raw.replace(/\s+$/, ''));
+	}
+	while (out.length && out[out.length - 1] === '') out.pop();
+	return out.join('\n');
+}
+
+/** Rough visible length of Markdown text: link targets, markup and extra spaces left out. */
+export function plainLength(markdown: string): number {
+	return markdown
+		.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
+		.replace(/\[\[([^\]]+)\]\]/g, '$1')
+		.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+		.replace(/[*_`~>#]/g, '')
+		.replace(/\s+/g, ' ')
+		.trim().length;
+}
+
+/**
  * The task's own description: its body text with frontmatter, headings, checkboxes,
  * Sheiko's entries and the Lifecycle Summary removed, joined into one line and cut
  * to `max` characters. Text typed inside a Sheiko section (not an entry) is kept.
  */
 export function describeTask(content: string, max = 140): string {
-	let body = content;
-	const fmMatch = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(body);
-	if (fmMatch) body = body.slice(fmMatch[0].length);
+	const body = stripFrontmatter(content);
 	const words: string[] = [];
 	let inSummary = false;
+	let fence: string | null = null;
 	for (const raw of body.split('\n')) {
 		const l = raw.trim();
+		if (fence !== null) {
+			if (l.startsWith(fence)) fence = null;
+			continue;
+		}
+		const tf = TEMPLATE_FENCE.exec(l);
+		if (tf) {
+			fence = tf[1] ?? '```';
+			continue;
+		}
+		if (isTemplateLine(l)) continue;
 		if (/^#{1,6}\s/.test(l)) {
 			inSummary = l === SUMMARY_HEADING;
 			continue;
