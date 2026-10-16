@@ -125,6 +125,8 @@ export interface FactsInput {
 export interface Facts {
 	/** Minutes spent in the working status, from Status History. Null if never recorded there. */
 	progressMinutes: number | null;
+	/** The same time in progress, in milliseconds, for display to the second (0.2.3). */
+	progressMs: number | null;
 	/** When the task last entered review, from Status History. */
 	inReviewSince: Date | null;
 	/** Times sent back from the sign-off window. */
@@ -153,6 +155,7 @@ export function computeFacts(inp: FactsInput): Facts {
 	}
 	return {
 		progressMinutes: prog ? prog.minutes : null,
+		progressMs: prog ? prog.ms : null,
 		inReviewSince,
 		sentBack,
 		checklist: inp.checklist,

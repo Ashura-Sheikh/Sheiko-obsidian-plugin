@@ -1,6 +1,6 @@
 import { App, Modal, Setting, TFile } from 'obsidian';
 import type SheikoPlugin from '../main';
-import { formatContextLine, formatMinutes, parseHistory, toLocalIso } from '../lifecycle';
+import { formatContextLine, formatDuration, parseHistory, toLocalIso } from '../lifecycle';
 import { SENT_BACK_NOTE, classifyWorker, computeFacts, describeTask, latestContext, workerLabel } from '../review';
 import { isCardOpen, pruneCardStates, recordCardToggle } from '../signoff-logic';
 import { labelFor } from '../tasknotes';
@@ -169,7 +169,7 @@ export class SignoffModal extends Modal {
 			due: fm[cfg.field.due],
 		});
 		const parts: string[] = [];
-		if (facts.progressMinutes !== null) parts.push(`${labelFor(cfg, s.progressStatus)}: ${formatMinutes(facts.progressMinutes)}`);
+		if (facts.progressMs !== null) parts.push(`${labelFor(cfg, s.progressStatus)}: ${formatDuration(facts.progressMs)}`);
 		if (facts.inReviewSince) parts.push(`In review since ${toLocalIso(facts.inReviewSince).slice(0, 16).replace('T', ' ')}`);
 		if (facts.checklist) parts.push(`Checklist ${facts.checklist.done}/${facts.checklist.total}`);
 		if (facts.due) parts.push(`${facts.overdue ? '⚠️ Overdue' : 'Due'} ${facts.due.replace('T', ' ')}`);
