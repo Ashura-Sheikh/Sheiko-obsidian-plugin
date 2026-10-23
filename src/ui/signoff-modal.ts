@@ -21,7 +21,8 @@ const FOLD_ABOVE = 3;
 
 /**
  * Sign-off prompt. Closing stays the user's decision: nothing is closed unless
- * "Approve and close" is clicked. One window at a time; new prompts are added to it.
+ * "Sign off and close" is clicked. "Sign off" records a sign-off and leaves the task
+ * in review (0.2.4). One window at a time; new prompts are added to it.
  * Each task shows who worked on it, a short summary and a facts line, all read
  * locally from the note.
  */
@@ -141,8 +142,24 @@ export class SignoffModal extends Modal {
 			if (!(await this.saveDraft(file))) return;
 			if (await this.plugin.tracker.setStatus(file, s.progressStatus, SENT_BACK_NOTE)) this.done(file);
 		});
+		// 0.2.4 (Sheikh, 2026-10-23): "Sign off" records the sign-off and leaves the task in
+		// review for whoever closes it; "Sign off and close" is the old "Approve and close".
+		const signOff = new ButtonComponent(actions)
+			.setButtonText('Sign off')
+			.setCta()
+			.onClick(async () => {
+				if (!(await this.saveDraft(file))) return;
+				if (await this.plugin.tracker.signOff(file)) {
+					this.done(file);
+					this.plugin.signoffChanged(file);
+				}
+			});
+		if (!s.identity.trim()) {
+			// Decision 4: an anonymous sign-off can't be read by anyone, so the button is off.
+			signOff.setDisabled(true).setTooltip('Set your identity in Sheiko settings to sign off.');
+		}
 		new ButtonComponent(actions)
-			.setButtonText('Approve and close')
+			.setButtonText('Sign off and close')
 			.setCta()
 			.onClick(async () => {
 				if (!(await this.saveDraft(file))) return;

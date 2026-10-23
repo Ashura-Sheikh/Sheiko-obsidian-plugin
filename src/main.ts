@@ -253,6 +253,11 @@ export default class SheikoPlugin extends Plugin {
 		if (this.signoff === modal) this.signoff = null;
 	}
 
+	/** A sign-off was added or withdrawn: refresh the counts. (0.2.4) */
+	signoffChanged(_file: TFile): void {
+		this.scheduleStatusBar();
+	}
+
 	tasksAwaitingSignoff(): TFile[] {
 		const review = this.settings.reviewStatus;
 		if (!review || !this.taskNotes.found) return [];
@@ -290,6 +295,10 @@ export default class SheikoPlugin extends Plugin {
 		settings.week = DEFAULT_SETTINGS.week.map((d, i) => ({ ...d, ...(raw.settings?.week?.[i] ?? {}) }));
 		settings.allowedVaults = [...(raw.settings?.allowedVaults ?? [])];
 		settings.agentNames = [...(raw.settings?.agentNames ?? [])];
+		// 0.2.4: arrays copied so they never share DEFAULT_SETTINGS'.
+		settings.ageBandHours = [...(raw.settings?.ageBandHours ?? DEFAULT_SETTINGS.ageBandHours)];
+		settings.protectedHeadings = [...(raw.settings?.protectedHeadings ?? DEFAULT_SETTINGS.protectedHeadings)];
+		if (settings.signoffRecord !== 'field') settings.signoffRecord = 'context';
 		// Edited in place by index, so it must never share the DEFAULT_SETTINGS array.
 		settings.slotSchedule = DEFAULT_SETTINGS.slotSchedule.map((d, i) => {
 			const v = raw.settings?.slotSchedule?.[i];

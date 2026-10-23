@@ -3,6 +3,7 @@ import type { SettingDefinitionItem } from 'obsidian';
 import type SheikoPlugin from './main';
 import { DEFAULT_WEEK, WeekSchedule } from './lifecycle';
 import { ActiveSlot, parseSlotSpec } from './slot-logic';
+import type { SignoffForm } from './signoff-record';
 
 export interface SheikoSettings {
 	/** Written as `closedBy` and in Context entries. Blank = no `closedBy` is written. */
@@ -38,6 +39,15 @@ export interface SheikoSettings {
 	slotSchedule: string[];
 	/** Folder for slot reports, one note per day. */
 	reportFolder: string;
+	// ---- 0.2.4 ----
+	/** How "Sign off" (without closing) is recorded. Both forms are always read. */
+	signoffRecord: SignoffForm;
+	/** Frontmatter field for the 'field' form; the identity goes in `<field>By`. */
+	signoffField: string;
+	/** Age bands for tasks in review, in hours, ascending (clock time). */
+	ageBandHours: number[];
+	/** Checklist sections whose heading contains one of these (any case) can't be ticked from the checklist window. */
+	protectedHeadings: string[];
 	// ---- Phase 3 ----
 	/** At each day's end time, roll unfinished tasks' `scheduled` to the next day. */
 	autoRoll: boolean;
@@ -62,6 +72,10 @@ export const DEFAULT_SETTINGS: SheikoSettings = {
 	slotSchedule: ['', '', '', '', '', '', ''],
 	reportFolder: 'Sheiko Reports',
 	autoRoll: false,
+	signoffRecord: 'context',
+	signoffField: 'signedOff',
+	ageBandHours: [3, 6, 12, 24],
+	protectedHeadings: ['Pre-Handoff Checklist', 'Necessity check', 'sign-off'],
 };
 
 export interface PluginData {
@@ -250,7 +264,7 @@ export class SheikoSettingTab extends PluginSettingTab {
 					{
 						name: 'Your identity',
 						desc: () =>
-							"Written as closedBy when Sheiko records a close, and on context entries you add. Leave blank and closedBy isn't written.",
+							"Written as closedBy when Sheiko records a close, and on context entries and sign-offs you add. Leave blank and closedBy isn't written, and the \"Sign off\" button is off.",
 						render: (setting) => {
 							setting.addText((t) =>
 								t
@@ -275,7 +289,40 @@ export class SheikoSettingTab extends PluginSettingTab {
 							"Where a task moves when every checkbox is ticked. Tasks here wait for sign-off. While this isn't set, the checkbox move and both sign-off prompts are off.",
 						render: pick('reviewStatus', false, true),
 					},
-					{ name: 'Done status', desc: () => 'What "Approve and close" in the sign-off prompt sets.', render: pick('doneStatus', true) },
+					{ name: 'Done status', desc: () => 'What "Sign off and close" in the sign-off prompt sets.', render: pick('doneStatus', true) },
+					{
+						name: 'Sign-off record',
+						desc: () =>
+							'How "Sign off" (without closing) is recorded. A context line keeps who and when, and a withdrawal adds a line. ' +
+							'A frontmatter field is overwritten in place. Both forms are always read, so switching never hides an earlier sign-off.',
+						render: (setting) => {
+							setting.addDropdown((d) =>
+								d
+									.addOption('context', 'Context line')
+									.addOption('field', 'Frontmatter field')
+									.setValue(s.signoffRecord)
+									.onChange(async (v) => {
+										s.signoffRecord = v === 'field' ? 'field' : 'context';
+										await this.plugin.saveSettings();
+									}),
+							);
+						},
+					},
+					{
+						name: 'Sign-off field',
+						desc: () => `For the frontmatter form: the time goes in this field, and your identity in ${s.signoffField}By.`,
+						render: (setting) => {
+							setting.addText((t) =>
+								t
+									.setPlaceholder(DEFAULT_SETTINGS.signoffField)
+									.setValue(s.signoffField)
+									.onChange(async (v) => {
+										s.signoffField = v.trim() || DEFAULT_SETTINGS.signoffField;
+										await this.plugin.saveSettings();
+									}),
+							);
+						},
+					},
 					{
 						name: 'Timer start moves task to working',
 						desc: () => 'Only moves it forward, from a status before the working status.',
@@ -288,7 +335,7 @@ export class SheikoSettingTab extends PluginSettingTab {
 					},
 					{
 						name: 'Prompt for sign-off on review',
-						desc: () => 'Ask to approve and close as soon as a task enters review.',
+						desc: () => 'Ask for sign-off as soon as a task enters review.',
 						render: toggle('promptOnReview'),
 					},
 					{
