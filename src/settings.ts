@@ -267,7 +267,9 @@ export class SheikoSettingTab extends PluginSettingTab {
 					{
 						name: 'Your identity',
 						desc: () =>
-							"Written as closedBy when Sheiko records a close, and on context entries and sign-offs you add. Leave blank and closedBy isn't written, and the \"Sign off\" button is off.",
+							"Written as closedBy when Sheiko records a close, and on context entries and sign-offs you add. " +
+							'Only sign-offs and withdrawals under this identity count (case ignored), so a line someone else types can\'t sign off for you; ' +
+							"change it and sign-offs under the old one stop counting. Leave blank and closedBy isn't written, and the \"Sign off\" button is off.",
 						render: (setting) => {
 							setting.addText((t) =>
 								t
