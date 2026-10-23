@@ -2,6 +2,7 @@ import { App, ButtonComponent, Modal, TFile } from 'obsidian';
 import type SheikoPlugin from '../main';
 import { toLocalIso } from '../lifecycle';
 import { classifyWorker, workerLabel } from '../review';
+import { renderPriorityPill } from './pill';
 
 /**
  * 0.2.4: tasks signed off with "Sign off" but still in review, waiting for whoever
@@ -49,6 +50,7 @@ export class SignedOffModal extends Modal {
 		card.createDiv({ cls: 'sheiko-card-title', text: file.basename, attr: { title: file.basename } });
 		const meta = card.createDiv({ cls: 'sheiko-card-worker' });
 		const worker = classifyWorker(fm[s.workerField], s.agentNames);
+		renderPriorityPill(meta, this.plugin.taskNotes, fm[this.plugin.taskNotes.field.priority]);
 		meta.createSpan({ cls: `sheiko-worker sheiko-worker-${worker.kind}`, text: workerLabel(worker) });
 		if (ev) {
 			card.createEl('p', {

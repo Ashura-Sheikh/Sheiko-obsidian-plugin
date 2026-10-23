@@ -74,3 +74,16 @@
 .sheiko-signoff .sheiko-bands { margin: 0 0 0.75em; font-size: var(--font-ui-small); }
 .sheiko-signoff .sheiko-band { text-decoration: none; }
 .sheiko-signoff .sheiko-band.is-active { font-weight: var(--font-semibold); text-decoration: underline; }
+
+/* ---- 0.2.4: priority pill (TaskNotes' label and colour) ---- */
+.sheiko-signoff .sheiko-card-worker { display: flex; flex-wrap: wrap; gap: 0.4em; align-items: center; }
+.sheiko-signoff .sheiko-priority {
+    --sheiko-priority-color: var(--text-muted);
+    display: inline-block;
+    white-space: nowrap;
+    padding: 0 0.5em;
+    border-radius: var(--radius-s);
+    font-size: var(--font-ui-smaller);
+    border: 1px solid var(--sheiko-priority-color);
+    color: var(--sheiko-priority-color);
+}

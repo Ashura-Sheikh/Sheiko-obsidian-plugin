@@ -13,6 +13,7 @@ import {
 } from '../review';
 import { isCardOpen, pruneCardStates, recordCardToggle } from '../signoff-logic';
 import { AgeBand, ageBands, reviewSince } from '../age-bands';
+import { renderPriorityPill } from './pill';
 import { labelFor } from '../tasknotes';
 
 export type SignoffReason = 'review' | 'cutoff' | 'manual';
@@ -223,9 +224,10 @@ export class SignoffModal extends Modal {
 			});
 
 		// Own line under the header, so the badge doesn't wrap inside the narrow name column.
-		card
-			.createDiv({ cls: 'sheiko-card-worker' })
-			.createSpan({ cls: `sheiko-worker sheiko-worker-${worker.kind}`, text: workerLabel(worker) });
+		const meta = card.createDiv({ cls: 'sheiko-card-worker' });
+		// 0.2.4: priority pill, in TaskNotes' own label and colour.
+		renderPriorityPill(meta, cfg, fm[cfg.field.priority]);
+		meta.createSpan({ cls: `sheiko-worker sheiko-worker-${worker.kind}`, text: workerLabel(worker) });
 
 		const details = card.createEl('details', { cls: 'sheiko-card-details' });
 		details.open = isCardOpen(file.path, folded, this.cardStates);

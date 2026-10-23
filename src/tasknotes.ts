@@ -10,6 +10,15 @@ export interface TaskNotesStatus {
 	order: number;
 }
 
+/** 0.2.4: one of TaskNotes' priorities, for the pill on sign-off cards. */
+export interface TaskNotesPriority {
+	value: string;
+	label: string;
+	/** A #rgb / #rrggbb colour, or null if TaskNotes' value isn't one. */
+	color: string | null;
+	weight: number;
+}
+
 export interface TaskNotesConfig {
 	found: boolean;
 	version: string | null;
@@ -18,6 +27,8 @@ export interface TaskNotesConfig {
 	taskPropertyName: string;
 	taskPropertyValue: string;
 	statuses: TaskNotesStatus[];
+	/** 0.2.4: TaskNotes' priority list. Empty if it has none; then no pills are shown. */
+	priorities: TaskNotesPriority[];
 	field: {
 		status: string;
 		completedDate: string;
@@ -45,6 +56,7 @@ const FALLBACK: TaskNotesConfig = {
 		{ value: 'in-review', label: 'In Review', isCompleted: false, order: 3 },
 		{ value: 'done', label: 'Done', isCompleted: true, order: 4 },
 	],
+	priorities: [],
 	field: {
 		status: 'status',
 		completedDate: 'completedDate',
@@ -72,7 +84,28 @@ interface RawTaskNotesData {
 	taskPropertyName?: unknown;
 	taskPropertyValue?: unknown;
 	customStatuses?: RawStatus[];
+	customPriorities?: { value?: unknown; label?: unknown; color?: unknown; weight?: unknown }[];
 	fieldMapping?: Record<string, unknown>;
+}
+
+const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+/** 0.2.4: TaskNotes' priorities, read-only. Colours that aren't plain hex are dropped, never passed to CSS as-is. */
+export function readPriorities(raw: RawTaskNotesData['customPriorities']): TaskNotesPriority[] {
+	return (Array.isArray(raw) ? raw : [])
+		.filter((p) => typeof p?.value === 'string' && p.value.length > 0)
+		.map((p, i) => ({
+			value: p.value as string,
+			label: str(p.label, p.value as string),
+			color: typeof p.color === 'string' && HEX_COLOR.test(p.color.trim()) ? p.color.trim() : null,
+			weight: typeof p.weight === 'number' ? p.weight : i,
+		}));
+}
+
+/** The priority a task's field value names, or null (no value, or one TaskNotes doesn't list). */
+export function priorityFor(cfg: TaskNotesConfig, value: unknown): TaskNotesPriority | null {
+	if (typeof value !== 'string' || !value.trim()) return null;
+	return cfg.priorities.find((p) => p.value === value.trim()) ?? null;
 }
 
 const str = (v: unknown, fallback: string): string => (typeof v === 'string' && v.length > 0 ? v : fallback);
@@ -114,6 +147,7 @@ export async function loadTaskNotesConfig(app: App): Promise<TaskNotesConfig> {
 			taskPropertyName: str(raw.taskPropertyName, ''),
 			taskPropertyValue: str(raw.taskPropertyValue, ''),
 			statuses: statuses.length ? statuses : FALLBACK.statuses,
+			priorities: readPriorities(raw.customPriorities),
 			field: {
 				status: str(fm.status, 'status'),
 				completedDate: str(fm.completedDate, 'completedDate'),
