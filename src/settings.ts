@@ -182,6 +182,7 @@ export class SheikoSettingTab extends PluginSettingTab {
 					d.setValue(s[key]).onChange(async (v) => {
 						s[key] = v;
 						await this.plugin.saveSettings();
+						if (key === 'reviewStatus') await this.plugin.rebuildSignedOff();
 					});
 				});
 			};
@@ -319,6 +320,7 @@ export class SheikoSettingTab extends PluginSettingTab {
 									.onChange(async (v) => {
 										s.signoffField = v.trim() || DEFAULT_SETTINGS.signoffField;
 										await this.plugin.saveSettings();
+										await this.plugin.rebuildSignedOff();
 									}),
 							);
 						},

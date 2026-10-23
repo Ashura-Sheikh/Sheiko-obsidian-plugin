@@ -97,6 +97,15 @@ export class SignoffModal extends Modal {
 		contentEl.addClass('sheiko-modal', 'sheiko-signoff');
 		this.titleEl.setText(files.length === 1 ? 'Sign-off needed' : `Sign-off needed: ${files.length} tasks`);
 		contentEl.createEl('p', { cls: 'sheiko-muted', text: this.intro() });
+		// 0.2.4: the way to tasks signed off with "Sign off" and still waiting to close.
+		const nSigned = this.plugin.tasksSignedOff().length;
+		if (nSigned > 0) {
+			const link = contentEl.createEl('a', { cls: 'sheiko-signed-link', href: '#', text: `✓ ${nSigned} signed off, waiting to close` });
+			link.addEventListener('click', (ev) => {
+				ev.preventDefault();
+				this.plugin.openSignedOff();
+			});
+		}
 		pruneCardStates(files.map((f) => f.path), this.cardStates);
 		for (const path of [...this.expanded]) if (!files.some((f) => f.path === path)) this.expanded.delete(path);
 		files.forEach((file, i) => this.renderCard(contentEl, file, contents[i] ?? '', files.length > FOLD_ABOVE));

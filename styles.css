@@ -66,3 +66,6 @@
 .sheiko-signoff .sheiko-card-context { padding-top: 0; }
 .sheiko-signoff .sheiko-card-context .setting-item-info { display: none; }
 .sheiko-signoff .sheiko-card-context .setting-item-control { flex: 1; }
+
+/* ---- 0.2.4: signed off, waiting to close ---- */
+.sheiko-signoff .sheiko-signed-link { display: inline-block; margin: 0 0 0.75em; font-size: var(--font-ui-small); }

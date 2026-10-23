@@ -185,3 +185,58 @@ test('tracker: dry run writes no sign-off, in either form', async () => {
 		assert.equal(v.snapshot().get(T), before, form);
 	}
 });
+
+// ---------- the signed-off index (signoff-index.ts), run for real ----------
+
+test('index: a signed-off task leaves the sign-off list and joins the waiting-to-close list', async () => {
+	const v = await inReview();
+	const idx = v.plugin.signoffIndex;
+	await idx.rebuild();
+	assert.deepEqual(idx.awaiting().map((f) => f.path), [T]);
+	assert.deepEqual(idx.signed(), []);
+	await v.plugin.tracker.signOff(v.file(T));
+	assert.equal(await idx.refresh(v.file(T)), true, 'refresh reports the change');
+	assert.deepEqual(idx.awaiting(), []);
+	assert.deepEqual(idx.signed().map((f) => f.path), [T]);
+	assert.equal(idx.map.get(T)?.who, 'sheikh');
+});
+
+test('index: withdraw, send back and close all take a task off the waiting-to-close list', async () => {
+	for (const step of ['withdraw', 'send back', 'close'] as const) {
+		const v = await inReview();
+		const idx = v.plugin.signoffIndex;
+		await v.plugin.tracker.signOff(v.file(T));
+		await idx.refresh(v.file(T));
+		await new Promise((r) => setTimeout(r, 1100));
+		if (step === 'withdraw') await v.plugin.tracker.withdrawSignOff(v.file(T));
+		else {
+			v.edit(T, { status: step === 'close' ? 'done' : 'in-progress' });
+			v.plugin.tracker.onMetadataChanged(v.file(T));
+			await runTimers();
+		}
+		await idx.refresh(v.file(T));
+		assert.deepEqual(idx.signed(), [], step);
+		assert.deepEqual(idx.awaiting().map((f) => f.path), step === 'withdraw' ? [T] : [], step);
+	}
+});
+
+test('index: rebuild finds sign-offs in either form; rename keeps the entry', async () => {
+	const v = await inReview({ settings: { signoffRecord: 'field' } });
+	await v.plugin.tracker.signOff(v.file(T));
+	const idx = v.plugin.signoffIndex;
+	await idx.rebuild();
+	assert.deepEqual(idx.signed().map((f) => f.path), [T]);
+	assert.equal(idx.map.get(T)?.source, 'field');
+	idx.rename(T, 'TaskNotes/Tasks/B.md');
+	assert.equal(idx.map.has(T), false);
+	assert.equal(idx.map.has('TaskNotes/Tasks/B.md'), true);
+});
+
+test('index: a note that is not a task is never listed, even with a sign-off line', async () => {
+	const v = await inReview();
+	v.notes.set('Notes/plain.md', `---\nstatus: in-review\n---\n${C([sign('11:00:00')])}`);
+	const idx = v.plugin.signoffIndex;
+	await idx.rebuild();
+	assert.equal(idx.signed().some((f) => f.path === 'Notes/plain.md'), false);
+	assert.equal(idx.awaiting().some((f) => f.path === 'Notes/plain.md'), false);
+});

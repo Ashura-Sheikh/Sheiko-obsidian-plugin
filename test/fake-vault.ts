@@ -11,6 +11,7 @@ import { Tracker } from '../src/tracker';
 import { Roller } from '../src/roller';
 import { FocusSlots } from '../src/slots';
 import { SignoffRoute, signoffRoute } from '../src/signoff-logic';
+import { SignoffIndex } from '../src/signoff-index';
 import type SheikoPlugin from '../src/main';
 import type { TFile as RealTFile } from 'obsidian';
 
@@ -209,11 +210,11 @@ export class FakeVault {
 				self.prompts.push({ paths: files.map((f) => f.path), reason });
 			},
 			refreshStatusBar: () => undefined,
-			tasksAwaitingSignoff: () =>
-				[...self.notes.keys()]
-					.filter((p) => self.fm(p).status === self.data.settings.reviewStatus)
-					.map((p) => self.file(p)),
+			// 0.2.4: the real index, so tests check the same filter the plugin uses.
+			tasksAwaitingSignoff: () => plugin.signoffIndex.awaiting(),
+			tasksSignedOff: () => plugin.signoffIndex.signed(),
 		} as unknown as SheikoPlugin;
+		plugin.signoffIndex = new SignoffIndex(this.app as never, () => taskNotes, () => self.data.settings);
 		plugin.tracker = new Tracker(plugin);
 		plugin.roller = new Roller(plugin);
 		plugin.slots = new FocusSlots(plugin);
