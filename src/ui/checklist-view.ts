@@ -111,9 +111,7 @@ export class ChecklistView extends ItemView {
 			cls: 'sheiko-muted',
 			text: `Checklist ${all.filter((i) => i.checked).length}/${all.length}. Ticks here are written to the note and logged in its Context.`,
 		});
-		new ButtonComponent(head).setButtonText('Open note').onClick(() => {
-			void this.app.workspace.getLeaf('tab').openFile(file);
-		});
+		new ButtonComponent(head).setButtonText('Open note').onClick(() => this.openInMainWindow(file));
 		const why = this.cannotTick();
 		if (why) head.createEl('p', { cls: 'sheiko-checklist-warn', text: why });
 		if (sections.length === 0) {
@@ -123,6 +121,21 @@ export class ChecklistView extends ItemView {
 		const lines = content.split('\n');
 		for (const sec of sections) this.renderSection(el, file, lines, sec, why !== null);
 		el.scrollTop = scroll;
+	}
+
+	/**
+	 * Opens the note in a new tab in Obsidian's main window, not in this pop-out.
+	 * getLeaf('tab') alone opens next to the active leaf, which is this view (found in
+	 * Sheikh's live test, 2026-10-23), so a main-window leaf is made active first.
+	 */
+	private openInMainWindow(file: TFile): void {
+		const ws = this.app.workspace;
+		const main = ws.getMostRecentLeaf(ws.rootSplit);
+		if (main) {
+			main.view.containerEl.win.focus();
+			ws.setActiveLeaf(main, { focus: true });
+		}
+		void ws.getLeaf('tab').openFile(file);
 	}
 
 	/** Why nothing can be ticked from here right now, or null. */
