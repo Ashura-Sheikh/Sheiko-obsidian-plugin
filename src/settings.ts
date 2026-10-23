@@ -3,6 +3,9 @@ import type { SettingDefinitionItem } from 'obsidian';
 import type SheikoPlugin from './main';
 import { DEFAULT_WEEK, WeekSchedule } from './lifecycle';
 import { ActiveSlot, parseSlotSpec } from './slot-logic';
+import type { SignoffForm } from './signoff-record';
+import { parseBandHours } from './age-bands';
+import { parseHeadingList } from './checklist';
 
 export interface SheikoSettings {
 	/** Written as `closedBy` and in Context entries. Blank = no `closedBy` is written. */
@@ -38,6 +41,15 @@ export interface SheikoSettings {
 	slotSchedule: string[];
 	/** Folder for slot reports, one note per day. */
 	reportFolder: string;
+	// ---- 0.2.4 ----
+	/** How "Sign off" (without closing) is recorded. Both forms are always read. */
+	signoffRecord: SignoffForm;
+	/** Frontmatter field for the 'field' form; the identity goes in `<field>By`. */
+	signoffField: string;
+	/** Age bands for tasks in review, in hours, ascending (clock time). */
+	ageBandHours: number[];
+	/** Checklist sections whose heading contains one of these (any case) can't be ticked from the checklist window. */
+	protectedHeadings: string[];
 	// ---- Phase 3 ----
 	/** At each day's end time, roll unfinished tasks' `scheduled` to the next day. */
 	autoRoll: boolean;
@@ -62,6 +74,10 @@ export const DEFAULT_SETTINGS: SheikoSettings = {
 	slotSchedule: ['', '', '', '', '', '', ''],
 	reportFolder: 'Sheiko Reports',
 	autoRoll: false,
+	signoffRecord: 'context',
+	signoffField: 'signedOff',
+	ageBandHours: [3, 6, 12, 24],
+	protectedHeadings: ['Pre-Handoff Checklist', 'Necessity check', 'sign-off'],
 };
 
 export interface PluginData {
@@ -168,6 +184,7 @@ export class SheikoSettingTab extends PluginSettingTab {
 					d.setValue(s[key]).onChange(async (v) => {
 						s[key] = v;
 						await this.plugin.saveSettings();
+						if (key === 'reviewStatus') await this.plugin.rebuildSignedOff();
 					});
 				});
 			};
@@ -250,7 +267,9 @@ export class SheikoSettingTab extends PluginSettingTab {
 					{
 						name: 'Your identity',
 						desc: () =>
-							"Written as closedBy when Sheiko records a close, and on context entries you add. Leave blank and closedBy isn't written.",
+							"Written as closedBy when Sheiko records a close, and on context entries and sign-offs you add. " +
+							'Only sign-offs and withdrawals under this identity count (case ignored), so a line someone else types can\'t sign off for you; ' +
+							"change it and sign-offs under the old one stop counting. Leave blank and closedBy isn't written, and the \"Sign off\" button is off.",
 						render: (setting) => {
 							setting.addText((t) =>
 								t
@@ -275,7 +294,41 @@ export class SheikoSettingTab extends PluginSettingTab {
 							"Where a task moves when every checkbox is ticked. Tasks here wait for sign-off. While this isn't set, the checkbox move and both sign-off prompts are off.",
 						render: pick('reviewStatus', false, true),
 					},
-					{ name: 'Done status', desc: () => 'What "Approve and close" in the sign-off prompt sets.', render: pick('doneStatus', true) },
+					{ name: 'Done status', desc: () => 'What "Sign off and close" in the sign-off prompt sets.', render: pick('doneStatus', true) },
+					{
+						name: 'Sign-off record',
+						desc: () =>
+							'How "Sign off" (without closing) is recorded. A context line keeps who and when, and a withdrawal adds a line. ' +
+							'A frontmatter field is overwritten in place. Both forms are always read, so switching never hides an earlier sign-off.',
+						render: (setting) => {
+							setting.addDropdown((d) =>
+								d
+									.addOption('context', 'Context line')
+									.addOption('field', 'Frontmatter field')
+									.setValue(s.signoffRecord)
+									.onChange(async (v) => {
+										s.signoffRecord = v === 'field' ? 'field' : 'context';
+										await this.plugin.saveSettings();
+									}),
+							);
+						},
+					},
+					{
+						name: 'Sign-off field',
+						desc: () => `For the frontmatter form: the time goes in this field, and your identity in ${s.signoffField}By.`,
+						render: (setting) => {
+							setting.addText((t) =>
+								t
+									.setPlaceholder(DEFAULT_SETTINGS.signoffField)
+									.setValue(s.signoffField)
+									.onChange(async (v) => {
+										s.signoffField = v.trim() || DEFAULT_SETTINGS.signoffField;
+										await this.plugin.saveSettings();
+										await this.plugin.rebuildSignedOff();
+									}),
+							);
+						},
+					},
 					{
 						name: 'Timer start moves task to working',
 						desc: () => 'Only moves it forward, from a status before the working status.',
@@ -288,13 +341,32 @@ export class SheikoSettingTab extends PluginSettingTab {
 					},
 					{
 						name: 'Prompt for sign-off on review',
-						desc: () => 'Ask to approve and close as soon as a task enters review.',
+						desc: () => 'Ask for sign-off as soon as a task enters review.',
 						render: toggle('promptOnReview'),
 					},
 					{
 						name: 'Prompt for sign-off at the daily cutoff',
 						desc: () => "At each day's end time, ask about every task still waiting in review.",
 						render: toggle('promptAtCutoff'),
+					},
+					{
+						name: 'Age bands (hours)',
+						desc: () =>
+							'Bands for how long tasks have waited in review, shown at the top of the sign-off window. Comma-separated, rising, e.g. 3, 6, 12, 24 ' +
+							'(bands 3–6h, 6–12h, 12–24h, over 24h). Clock time since the task last entered review, nights and weekends included.',
+						render: (setting) => {
+							setting.addText((t) =>
+								t
+									.setPlaceholder(DEFAULT_SETTINGS.ageBandHours.join(', '))
+									.setValue(s.ageBandHours.join(', '))
+									.onChange(async (v) => {
+										const parsed = parseBandHours(v);
+										if (!parsed) return; // ignored until valid
+										s.ageBandHours = parsed;
+										await this.plugin.saveSettings();
+									}),
+							);
+						},
 					},
 					{
 						name: 'Show sign-off count in the status bar',
@@ -307,6 +379,36 @@ export class SheikoSettingTab extends PluginSettingTab {
 									this.plugin.refreshStatusBar();
 								}),
 							);
+						},
+					},
+				],
+			},
+			{
+				// 0.2.4: own section, so the protected headings sit with the window they control (Sheikh, 2026-10-23).
+				heading: 'Checklist window',
+				rows: [
+					{
+						name: 'How the checklist window works',
+						desc: () =>
+							'"Checklist n/m" on a sign-off card opens the task\'s checklist in its own window. Ticks there are written to the note ' +
+							'and logged in its context section, and never move the task to review. It\'s view-only with no identity set, writes not allowed, or dry run on.',
+					},
+					{
+						name: 'Protected headings',
+						desc: () =>
+							'One per line, not case-sensitive. Boxes under a heading containing one of these words, or under a sub-heading of one, ' +
+							"can't be ticked from the checklist window: they're another person's record, such as a self-check or a gate. " +
+							'They can still be ticked in the note itself. Only real headings (#, ## …) count, not bold lines.',
+						render: (setting) => {
+							setting.addTextArea((t) => {
+								t.setPlaceholder(DEFAULT_SETTINGS.protectedHeadings.join('\n'))
+									.setValue(s.protectedHeadings.join('\n'))
+									.onChange(async (v) => {
+										s.protectedHeadings = parseHeadingList(v);
+										await this.plugin.saveSettings();
+									});
+								t.inputEl.rows = Math.max(4, s.protectedHeadings.length + 1);
+							});
 						},
 					},
 				],

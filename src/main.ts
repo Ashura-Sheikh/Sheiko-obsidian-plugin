@@ -1,11 +1,15 @@
 import { Notice, Plugin, TFile } from 'obsidian';
 import { cutoffDue, parseTimestamp } from './lifecycle';
+import { SignoffIndex } from './signoff-index';
+import type { SignoffEvent } from './signoff-record';
+import { SignedOffModal } from './ui/signedoff-modal';
+import { CHECKLIST_VIEW, ChecklistView } from './ui/checklist-view';
 import { Roller } from './roller';
 import { kindIcon, kindLabel, normalizeActiveSlot } from './slot-logic';
 import { FocusSlots } from './slots';
 import { DEFAULT_SETTINGS, PluginData, SheikoSettingTab, SheikoSettings } from './settings';
 import { signoffRoute, signoffRouteLog } from './signoff-logic';
-import { TaskNotesConfig, isTaskFile, loadTaskNotesConfig, statusOf } from './tasknotes';
+import { TaskNotesConfig, isTaskFile, loadTaskNotesConfig } from './tasknotes';
 import { Tracker } from './tracker';
 import { LifecycleModal, UnwitnessedModal } from './ui/lifecycle-modal';
 import { SignoffModal, SignoffReason } from './ui/signoff-modal';
@@ -25,10 +29,21 @@ export default class SheikoPlugin extends Plugin {
 	readonly signoffDrafts = new Map<string, string>();
 	private statusBarTimer: number | null = null;
 	private slotBarEl: HTMLElement | null = null;
+	/** 0.2.4: "✓ N signed off" status-bar item. */
+	private signedBarEl: HTMLElement | null = null;
+	/** 0.2.4: which review tasks are signed off but not closed. Kept up to date on every note change. */
+	signoffIndex!: SignoffIndex;
+
+	/** Signed off and waiting to close, by path, with the sign-off that counts. */
+	get signedOff(): Map<string, SignoffEvent> {
+		return this.signoffIndex.map;
+	}
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
 		this.taskNotes = await loadTaskNotesConfig(this.app);
+		this.signoffIndex = new SignoffIndex(this.app, () => this.taskNotes, () => this.settings);
+		this.registerView(CHECKLIST_VIEW, (leaf) => new ChecklistView(leaf, this));
 		this.tracker = new Tracker(this);
 		this.roller = new Roller(this);
 		this.slots = new FocusSlots(this);
@@ -66,6 +81,11 @@ export default class SheikoPlugin extends Plugin {
 				if (files.length === 0) new Notice('Sheiko: nothing is waiting for sign-off.');
 				else this.promptSignoff(files, 'manual');
 			},
+		});
+		this.addCommand({
+			id: 'show-signed-off',
+			name: 'Show signed-off tasks waiting to close',
+			callback: () => this.openSignedOff(),
 		});
 		this.addCommand({
 			id: 'roll-now',
@@ -112,6 +132,13 @@ export default class SheikoPlugin extends Plugin {
 			else this.promptSignoff(files, 'manual');
 		});
 
+		// 0.2.4: "✓ N signed off": signed off but still in review, waiting for whoever closes them.
+		this.signedBarEl = this.addStatusBarItem();
+		this.signedBarEl.addClass('sheiko-statusbar', 'mod-clickable');
+		this.signedBarEl.setAttr('aria-label', 'Sheiko: signed-off tasks waiting to close');
+		this.signedBarEl.hide();
+		this.registerDomEvent(this.signedBarEl, 'click', () => this.openSignedOff());
+
 		// Status bar: the slot running now ("☕ Break until 13:00"), or a quiet 🎧 to start one.
 		this.slotBarEl = this.addStatusBarItem();
 		this.slotBarEl.addClass('sheiko-statusbar', 'mod-clickable');
@@ -128,12 +155,14 @@ export default class SheikoPlugin extends Plugin {
 		this.registerEvent(
 			this.app.metadataCache.on('changed', (file) => {
 				this.tracker.onMetadataChanged(file);
+				void this.refreshSignedOff(file);
 				this.scheduleStatusBar();
 			}),
 		);
 		this.registerEvent(
 			this.app.vault.on('rename', (file, oldPath) => {
 				this.tracker.onRename(file, oldPath);
+				this.signoffIndex.rename(oldPath, file.path);
 				this.slots.onFileEvent('rename', file, oldPath);
 				this.scheduleStatusBar();
 			}),
@@ -141,6 +170,7 @@ export default class SheikoPlugin extends Plugin {
 		this.registerEvent(
 			this.app.vault.on('delete', (file) => {
 				this.tracker.onDelete(file);
+				this.signedOff.delete(file.path);
 				this.slots.onFileEvent('delete', file);
 				this.scheduleStatusBar();
 			}),
@@ -155,6 +185,7 @@ export default class SheikoPlugin extends Plugin {
 				return;
 			}
 			this.refreshStatusBar();
+			void this.rebuildSignedOff();
 			void this.tracker.reconcile().then(async () => {
 				await this.slots.tick();
 				await this.checkCutoff();
@@ -188,6 +219,7 @@ export default class SheikoPlugin extends Plugin {
 
 	refreshStatusBar(): void {
 		this.refreshSlotBar();
+		this.refreshSignedBar();
 		const el = this.statusBarEl;
 		if (!el) return;
 		const n = this.settings.statusBarCount ? this.tasksAwaitingSignoff().length : 0;
@@ -197,6 +229,56 @@ export default class SheikoPlugin extends Plugin {
 		}
 		el.setText(`⭐ ${n} awaiting sign-off`);
 		el.show();
+	}
+
+	private refreshSignedBar(): void {
+		const el = this.signedBarEl;
+		if (!el) return;
+		const n = this.settings.statusBarCount ? this.tasksSignedOff().length : 0;
+		if (n === 0) {
+			el.hide();
+			return;
+		}
+		el.setText(`✓ ${n} signed off`);
+		el.show();
+	}
+
+	// ---------- 0.2.4: signed off, waiting to close ----------
+
+	/** Re-reads one note and updates whether it's signed off. */
+	async refreshSignedOff(file: TFile): Promise<void> {
+		if (await this.signoffIndex.refresh(file)) this.scheduleStatusBar();
+	}
+
+	/** Rebuilds the index from every task in review (startup, and after a review-status change). */
+	async rebuildSignedOff(): Promise<void> {
+		await this.signoffIndex.rebuild();
+		this.refreshStatusBar();
+	}
+
+	tasksSignedOff(): TFile[] {
+		return this.signoffIndex.signed();
+	}
+
+	/** 0.2.4: a task's checklist in a pop-out window. Reuses the window if it's already open. */
+	async openChecklist(file: TFile): Promise<void> {
+		const open = this.app.workspace
+			.getLeavesOfType(CHECKLIST_VIEW)
+			.find((l) => (l.view.getState() as { path?: unknown }).path === file.path);
+		if (open) {
+			// revealLeaf needs Obsidian 1.7.2; minAppVersion is 1.4.4, so focus the window and leaf directly.
+			open.view.containerEl.win.focus();
+			this.app.workspace.setActiveLeaf(open, { focus: true });
+			return;
+		}
+		const leaf = this.app.workspace.openPopoutLeaf({ size: { width: 560, height: 680 } });
+		await leaf.setViewState({ type: CHECKLIST_VIEW, active: true, state: { path: file.path } });
+	}
+
+	openSignedOff(): void {
+		const files = this.tasksSignedOff();
+		if (files.length === 0) new Notice('Sheiko: no signed-off tasks are waiting to close.');
+		else new SignedOffModal(this.app, this).open();
 	}
 
 	private refreshSlotBar(): void {
@@ -253,12 +335,14 @@ export default class SheikoPlugin extends Plugin {
 		if (this.signoff === modal) this.signoff = null;
 	}
 
+	/** A sign-off was added or withdrawn: re-read the note now, so lists and counts don't wait for the cache. (0.2.4) */
+	signoffChanged(file: TFile): void {
+		void this.refreshSignedOff(file).then(() => this.refreshStatusBar());
+	}
+
+	/** 0.2.4: signed-off tasks have their own list, so they leave this one (and its count and prompts). */
 	tasksAwaitingSignoff(): TFile[] {
-		const review = this.settings.reviewStatus;
-		if (!review || !this.taskNotes.found) return [];
-		return this.app.vault
-			.getMarkdownFiles()
-			.filter((f) => isTaskFile(this.app, f, this.taskNotes) && statusOf(this.app, f, this.taskNotes) === review);
+		return this.signoffIndex.awaiting();
 	}
 
 	/**
@@ -290,6 +374,10 @@ export default class SheikoPlugin extends Plugin {
 		settings.week = DEFAULT_SETTINGS.week.map((d, i) => ({ ...d, ...(raw.settings?.week?.[i] ?? {}) }));
 		settings.allowedVaults = [...(raw.settings?.allowedVaults ?? [])];
 		settings.agentNames = [...(raw.settings?.agentNames ?? [])];
+		// 0.2.4: arrays copied so they never share DEFAULT_SETTINGS'.
+		settings.ageBandHours = [...(raw.settings?.ageBandHours ?? DEFAULT_SETTINGS.ageBandHours)];
+		settings.protectedHeadings = [...(raw.settings?.protectedHeadings ?? DEFAULT_SETTINGS.protectedHeadings)];
+		if (settings.signoffRecord !== 'field') settings.signoffRecord = 'context';
 		// Edited in place by index, so it must never share the DEFAULT_SETTINGS array.
 		settings.slotSchedule = DEFAULT_SETTINGS.slotSchedule.map((d, i) => {
 			const v = raw.settings?.slotSchedule?.[i];

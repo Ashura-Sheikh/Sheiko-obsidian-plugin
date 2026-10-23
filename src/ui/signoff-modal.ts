@@ -12,6 +12,8 @@ import {
 	workerLabel,
 } from '../review';
 import { isCardOpen, pruneCardStates, recordCardToggle } from '../signoff-logic';
+import { AgeBand, ageBands, reviewSince } from '../age-bands';
+import { renderPriorityPill } from './pill';
 import { labelFor } from '../tasknotes';
 
 export type SignoffReason = 'review' | 'cutoff' | 'manual';
@@ -21,7 +23,8 @@ const FOLD_ABOVE = 3;
 
 /**
  * Sign-off prompt. Closing stays the user's decision: nothing is closed unless
- * "Approve and close" is clicked. One window at a time; new prompts are added to it.
+ * "Sign off and close" is clicked. "Sign off" records a sign-off and leaves the task
+ * in review (0.2.4). One window at a time; new prompts are added to it.
  * Each task shows who worked on it, a short summary and a facts line, all read
  * locally from the note.
  */
@@ -35,6 +38,8 @@ export class SignoffModal extends Modal {
 	private cardStates = new Map<string, boolean>();
 	/** Descriptions the user expanded with "Show more", by task path, kept across redraws (0.2.3). */
 	private expanded = new Set<string>();
+	/** 0.2.4: the age band the window is filtered to (its index), or null for all tasks. */
+	private bandFilter: number | null = null;
 	/** Owns the rendered Markdown in the cards; replaced on each redraw, unloaded on close (0.2.3). */
 	private md = new Component();
 
@@ -96,15 +101,68 @@ export class SignoffModal extends Modal {
 		contentEl.addClass('sheiko-modal', 'sheiko-signoff');
 		this.titleEl.setText(files.length === 1 ? 'Sign-off needed' : `Sign-off needed: ${files.length} tasks`);
 		contentEl.createEl('p', { cls: 'sheiko-muted', text: this.intro() });
+		// 0.2.4: the way to tasks signed off with "Sign off" and still waiting to close.
+		const nSigned = this.plugin.tasksSignedOff().length;
+		if (nSigned > 0) {
+			const link = contentEl.createEl('a', { cls: 'sheiko-signed-link', href: '#', text: `✓ ${nSigned} signed off, waiting to close` });
+			link.addEventListener('click', (ev) => {
+				ev.preventDefault();
+				this.plugin.openSignedOff();
+			});
+		}
 		pruneCardStates(files.map((f) => f.path), this.cardStates);
 		for (const path of [...this.expanded]) if (!files.some((f) => f.path === path)) this.expanded.delete(path);
-		files.forEach((file, i) => this.renderCard(contentEl, file, contents[i] ?? '', files.length > FOLD_ABOVE));
+		// 0.2.4: age bands (clock time since each task last entered review); a click filters the cards.
+		const now = new Date();
+		const bands = ageBands(
+			files.map((f, i) => ({ path: f.path, since: reviewSince(parseHistory(contents[i] ?? ''), this.plugin.settings.reviewStatus) })),
+			now,
+			this.plugin.settings.ageBandHours,
+		);
+		if (this.bandFilter !== null && !bands[this.bandFilter]) this.bandFilter = null;
+		this.renderBands(contentEl, bands);
+		const shown = this.bandFilter === null ? null : new Set(bands[this.bandFilter]?.paths ?? []);
+		files.forEach((file, i) => {
+			if (shown && !shown.has(file.path)) return;
+			this.renderCard(contentEl, file, contents[i] ?? '', files.length > FOLD_ABOVE);
+		});
+		if (shown && shown.size === 0) contentEl.createEl('p', { cls: 'sheiko-muted', text: 'No tasks in this band now.' });
 		new Setting(contentEl)
 			.setDesc('Tasks left for later stay in the status bar count. Click it to come back here.')
 			.addButton((b) => b.setButtonText('Later').onClick(() => this.close()));
 		this.modalEl.scrollTop = scroll.modal;
 		contentEl.scrollTop = scroll.content;
 		if (focus) this.restoreFocus(focus);
+	}
+
+	/** "In review: >3h [3] · >6h [10] · …", each band clickable; "All" clears the filter. */
+	private renderBands(parent: HTMLElement, bands: AgeBand[]): void {
+		if (bands.length === 0) return;
+		const line = parent.createDiv({ cls: 'sheiko-bands' });
+		line.createSpan({ text: 'In review: ' });
+		bands.forEach((b, i) => {
+			if (i > 0) line.createSpan({ cls: 'sheiko-muted', text: ' · ' });
+			const el = line.createEl('a', {
+				cls: `sheiko-band${this.bandFilter === i ? ' is-active' : ''}`,
+				href: '#',
+				text: `${b.label} [${b.paths.length}]`,
+				attr: { title: `${b.range} in review (clock time). Click to show only these.`, 'aria-pressed': String(this.bandFilter === i) },
+			});
+			el.addEventListener('click', (ev) => {
+				ev.preventDefault();
+				this.bandFilter = this.bandFilter === i ? null : i;
+				this.redraw();
+			});
+		});
+		if (this.bandFilter !== null) {
+			line.createSpan({ cls: 'sheiko-muted', text: ' · ' });
+			const all = line.createEl('a', { cls: 'sheiko-band', href: '#', text: 'All' });
+			all.addEventListener('click', (ev) => {
+				ev.preventDefault();
+				this.bandFilter = null;
+				this.redraw();
+			});
+		}
 	}
 
 	private captureFocus(): { path: string; start: number; end: number } | null {
@@ -141,8 +199,24 @@ export class SignoffModal extends Modal {
 			if (!(await this.saveDraft(file))) return;
 			if (await this.plugin.tracker.setStatus(file, s.progressStatus, SENT_BACK_NOTE)) this.done(file);
 		});
+		// 0.2.4 (Sheikh, 2026-10-23): "Sign off" records the sign-off and leaves the task in
+		// review for whoever closes it; "Sign off and close" is the old "Approve and close".
+		const signOff = new ButtonComponent(actions)
+			.setButtonText('Sign off')
+			.setCta()
+			.onClick(async () => {
+				if (!(await this.saveDraft(file))) return;
+				if (await this.plugin.tracker.signOff(file)) {
+					this.done(file);
+					this.plugin.signoffChanged(file);
+				}
+			});
+		if (!s.identity.trim()) {
+			// Decision 4: an anonymous sign-off can't be read by anyone, so the button is off.
+			signOff.setDisabled(true).setTooltip('Set your identity in Sheiko settings to sign off.');
+		}
 		new ButtonComponent(actions)
-			.setButtonText('Approve and close')
+			.setButtonText('Sign off and close')
 			.setCta()
 			.onClick(async () => {
 				if (!(await this.saveDraft(file))) return;
@@ -150,9 +224,10 @@ export class SignoffModal extends Modal {
 			});
 
 		// Own line under the header, so the badge doesn't wrap inside the narrow name column.
-		card
-			.createDiv({ cls: 'sheiko-card-worker' })
-			.createSpan({ cls: `sheiko-worker sheiko-worker-${worker.kind}`, text: workerLabel(worker) });
+		const meta = card.createDiv({ cls: 'sheiko-card-worker' });
+		// 0.2.4: priority pill, in TaskNotes' own label and colour.
+		renderPriorityPill(meta, cfg, fm[cfg.field.priority]);
+		meta.createSpan({ cls: `sheiko-worker sheiko-worker-${worker.kind}`, text: workerLabel(worker) });
 
 		const details = card.createEl('details', { cls: 'sheiko-card-details' });
 		details.open = isCardOpen(file.path, folded, this.cardStates);
@@ -181,13 +256,31 @@ export class SignoffModal extends Modal {
 			checklist: boxes.length ? { done: boxes.filter((li) => li.task !== ' ').length, total: boxes.length } : null,
 			due: fm[cfg.field.due],
 		});
-		const parts: string[] = [];
-		if (facts.progressMs !== null) parts.push(`${labelFor(cfg, s.progressStatus)}: ${formatDuration(facts.progressMs)}`);
-		if (facts.inReviewSince) parts.push(`In review since ${toLocalIso(facts.inReviewSince).slice(0, 16).replace('T', ' ')}`);
-		if (facts.checklist) parts.push(`Checklist ${facts.checklist.done}/${facts.checklist.total}`);
-		if (facts.due) parts.push(`${facts.overdue ? '⚠️ Overdue' : 'Due'} ${facts.due.replace('T', ' ')}`);
-		if (facts.sentBack > 0) parts.push(`Sent back ${facts.sentBack}×`);
-		if (parts.length) details.createEl('p', { cls: 'sheiko-muted sheiko-facts', text: parts.join(' · ') });
+		// Each part is text, or a link: 0.2.4 makes "Checklist n/m" open the checklist pop-out.
+		const parts: { text: string; open?: () => void }[] = [];
+		if (facts.progressMs !== null) parts.push({ text: `${labelFor(cfg, s.progressStatus)}: ${formatDuration(facts.progressMs)}` });
+		if (facts.inReviewSince) parts.push({ text: `In review since ${toLocalIso(facts.inReviewSince).slice(0, 16).replace('T', ' ')}` });
+		if (facts.checklist) {
+			parts.push({ text: `Checklist ${facts.checklist.done}/${facts.checklist.total}`, open: () => void this.plugin.openChecklist(file) });
+		}
+		if (facts.due) parts.push({ text: `${facts.overdue ? '⚠️ Overdue' : 'Due'} ${facts.due.replace('T', ' ')}` });
+		if (facts.sentBack > 0) parts.push({ text: `Sent back ${facts.sentBack}×` });
+		if (parts.length) {
+			const p = details.createEl('p', { cls: 'sheiko-muted sheiko-facts' });
+			parts.forEach((part, i) => {
+				if (i > 0) p.appendText(' · ');
+				const open = part.open;
+				if (!open) {
+					p.appendText(part.text);
+					return;
+				}
+				const a = p.createEl('a', { cls: 'sheiko-checklist-link', href: '#', text: part.text, attr: { title: 'Open the checklist in its own window' } });
+				a.addEventListener('click', (ev) => {
+					ev.preventDefault();
+					open();
+				});
+			});
+		}
 
 		// Context box: always visible (outside the fold). The draft survives re-renders, and is
 		// saved before Approve / Send back so a note typed but not added isn't lost.

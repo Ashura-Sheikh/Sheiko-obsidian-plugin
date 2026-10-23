@@ -19,6 +19,7 @@ import {
 	appendToSection,
 	buildSummary,
 	checklistComplete,
+	formatContextLine,
 	isContextEntry,
 	isHistoryEntry,
 	isTimerRunning,
@@ -34,6 +35,7 @@ import {
 } from './lifecycle';
 import { TaskNotesConfig, hasStatus, isCompletedStatus, isTaskFile, labelFor, orderOf, statusOf } from './tasknotes';
 import { vaultBasePath } from './settings';
+import { SIGNOFF_PHRASE, WITHDRAW_PHRASE, byField, closeNote, signoffState } from './signoff-record';
 
 export const FIELD = {
 	closedBy: 'closedBy',
@@ -48,6 +50,8 @@ export const FIELD = {
 const SETTLE_MS = 600;
 /** A task first seen within this long of its file being created is treated as newly created. */
 const NEW_FILE_WINDOW_MS = 2 * 60 * 1000;
+/** A checklist-window edit only suppresses auto-stage for a metadata change arriving within this long. */
+const WINDOW_EDIT_MS = 10 * 1000;
 
 type FM = Record<string, unknown>;
 
@@ -61,6 +65,12 @@ export class Tracker {
 	private checklistDone = new Map<string, boolean | null>();
 	/** Status writes Sheiko made itself, with the reason to put on the history line. */
 	private pendingReason = new Map<string, { to: string; note: string }>();
+	/**
+	 * 0.2.4: boxes ticked from the checklist window, by path, with when. The next metadata
+	 * change for that note re-baselines the checklist without firing auto-stage, so a
+	 * window tick never moves a task (project-manager's read, Sheikh's 2a, 2026-10-23).
+	 */
+	private windowEdits = new Map<string, number>();
 
 	constructor(plugin: SheikoPlugin) {
 		this.plugin = plugin;
@@ -208,6 +218,12 @@ export class Tracker {
 		const doneNow = checklistComplete(cache?.listItems);
 		const wasDone = this.checklistDone.get(file.path);
 		this.checklistDone.set(file.path, doneNow);
+		const windowEdit = this.windowEdits.get(file.path);
+		if (windowEdit !== undefined) {
+			this.windowEdits.delete(file.path);
+			// A tick from the checklist window: baselines above are updated, nothing moves.
+			if (Date.now() - windowEdit < WINDOW_EDIT_MS) return;
+		}
 		if (isCompletedStatus(this.cfg, status) || this.pendingReason.has(file.path)) return;
 		const forward = (target: string): boolean =>
 			hasStatus(this.cfg, target) && status !== target && orderOf(this.cfg, status) < orderOf(this.cfg, target);
@@ -251,7 +267,7 @@ export class Tracker {
 			delete data.lastStatus[oldPath];
 		}
 		for (const u of data.unwitnessedCloses) if (u.path === oldPath) u.path = file.path;
-		for (const m of [this.timerRunning, this.checklistDone] as Map<string, unknown>[]) {
+		for (const m of [this.timerRunning, this.checklistDone, this.windowEdits] as Map<string, unknown>[]) {
 			if (m.has(oldPath)) {
 				m.set(file.path, m.get(oldPath));
 				m.delete(oldPath);
@@ -270,6 +286,7 @@ export class Tracker {
 		delete data.lastStatus[file.path];
 		this.timerRunning.delete(file.path);
 		this.checklistDone.delete(file.path);
+		this.windowEdits.delete(file.path);
 		data.unwitnessedCloses = data.unwitnessedCloses.filter((u) => u.path !== file.path);
 		void this.plugin.saveData(data);
 	}
@@ -292,6 +309,7 @@ export class Tracker {
 		this.queued.delete(path);
 		const file = this.plugin.app.vault.getAbstractFileByPath(path);
 		if (!(file instanceof TFile) || list.length === 0) return;
+		await this.annotateCloses(file, list);
 		await this.appendHistory(file, list);
 		for (const t of list) {
 			if (t.kind !== 'live' || t.from === null) continue;
@@ -312,6 +330,125 @@ export class Tracker {
 				this.plugin.promptSignoff([file], 'review');
 			}
 		}
+	}
+
+	/**
+	 * 0.2.4 (Sheikh's decision 3, 2026-10-23): a live close that Sheiko didn't make itself
+	 * (no reason attached) gets "(signed off by <who> at <time>)" if the task had a valid
+	 * sign-off, else "(no sign-off recorded)". The sign-off is judged on the history as it
+	 * stood just before the close. Closes made with "Sign off and close" keep their own note.
+	 */
+	private async annotateCloses(file: TFile, list: Transition[]): Promise<void> {
+		const review = this.plugin.settings.reviewStatus;
+		if (!review) return;
+		const needs = list.some((t) => t.kind === 'live' && !t.note && !isCompletedStatus(this.cfg, t.from) && isCompletedStatus(this.cfg, t.to));
+		if (!needs) return;
+		const content = await this.plugin.app.vault.read(file);
+		const fm: FM = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+		const history = parseHistory(content);
+		for (const t of list) {
+			if (t.kind === 'live' && !t.note && !isCompletedStatus(this.cfg, t.from) && isCompletedStatus(this.cfg, t.to)) {
+				t.note = closeNote(signoffState({ history, content, fm, reviewStatus: review, field: this.plugin.settings.signoffField, identity: this.plugin.settings.identity }));
+			}
+			history.push(t);
+		}
+	}
+
+	// ---------- 0.2.4: sign-off without closing ----------
+
+	/** Records a sign-off and leaves the task in review. Needs an identity (Sheikh's decision 4). */
+	async signOff(file: TFile): Promise<boolean> {
+		const who = this.plugin.settings.identity.trim();
+		if (!who) {
+			new Notice('Sheiko: set your identity in Sheiko settings to sign off.');
+			return false;
+		}
+		const now = new Date();
+		if (this.plugin.settings.signoffRecord === 'field') {
+			if (!this.guard()) return false;
+			const field = this.plugin.settings.signoffField;
+			await this.plugin.app.fileManager.processFrontMatter(file, (fm: FM) => {
+				fm[field] = toLocalIso(now);
+				fm[byField(field)] = who;
+			});
+			return true;
+		}
+		return this.addContext(file, formatContextLine(now, who, SIGNOFF_PHRASE));
+	}
+
+	/**
+	 * Withdraws a sign-off. Context form: adds a withdrawal line (nothing is removed).
+	 * Field form: clears the fields. Both run, so a sign-off in either form is withdrawn.
+	 */
+	async withdrawSignOff(file: TFile): Promise<boolean> {
+		const who = this.plugin.settings.identity.trim();
+		if (!who) {
+			new Notice('Sheiko: set your identity in Sheiko settings to withdraw a sign-off.');
+			return false;
+		}
+		if (!this.guard()) return false;
+		const field = this.plugin.settings.signoffField;
+		const fm: FM = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+		if (fm[field] !== undefined || fm[byField(field)] !== undefined) {
+			await this.plugin.app.fileManager.processFrontMatter(file, (f: FM) => {
+				delete f[field];
+				delete f[byField(field)];
+			});
+		}
+		return this.addContext(file, formatContextLine(new Date(), who, WITHDRAW_PHRASE));
+	}
+
+	/** The close note for "Close now" on a signed-off task, from the note as it is now. */
+	async closeNoteFor(file: TFile): Promise<string> {
+		const content = await this.plugin.app.vault.read(file);
+		const fm: FM = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+		return closeNote(
+			signoffState({
+				history: parseHistory(content),
+				content,
+				fm,
+				reviewStatus: this.plugin.settings.reviewStatus,
+				field: this.plugin.settings.signoffField,
+				identity: this.plugin.settings.identity,
+			}),
+		);
+	}
+
+	// ---------- 0.2.4: checklist window edits ----------
+
+	/**
+	 * Replaces one line of a note, only if it still reads `expected` (so an edit made since
+	 * the window drew can't be overwritten). Marks the note so the resulting metadata change
+	 * doesn't fire auto-stage. Returns 'ok', 'stale' or 'blocked'.
+	 */
+	async editLine(file: TFile, index: number, expected: string, replacement: string): Promise<'ok' | 'stale' | 'blocked'> {
+		if (!this.guard()) return 'blocked';
+		let result: 'ok' | 'stale' = 'stale';
+		this.windowEdits.set(file.path, Date.now());
+		await this.plugin.app.vault.process(file, (content) => {
+			const lines = content.split('\n');
+			if (lines[index] !== expected) return content;
+			lines[index] = replacement;
+			result = 'ok';
+			return lines.join('\n');
+		});
+		if (result === 'stale') this.windowEdits.delete(file.path);
+		return result;
+	}
+
+	/** Shared write check: blocked vault → notice; dry run → console. True if a write may go ahead. */
+	private guard(): boolean {
+		const blocked = this.blockedReason();
+		if (blocked) {
+			new Notice(blocked);
+			return false;
+		}
+		if (this.plugin.settings.dryRun) {
+			new Notice('Sheiko dry run: nothing written (see console).');
+			console.debug('[Sheiko dry run] write skipped');
+			return false;
+		}
+		return true;
 	}
 
 	// ---------- Writes ----------
