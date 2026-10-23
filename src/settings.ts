@@ -5,6 +5,7 @@ import { DEFAULT_WEEK, WeekSchedule } from './lifecycle';
 import { ActiveSlot, parseSlotSpec } from './slot-logic';
 import type { SignoffForm } from './signoff-record';
 import { parseBandHours } from './age-bands';
+import { parseHeadingList } from './checklist';
 
 export interface SheikoSettings {
 	/** Written as `closedBy` and in Context entries. Blank = no `closedBy` is written. */
@@ -366,26 +367,6 @@ export class SheikoSettingTab extends PluginSettingTab {
 						},
 					},
 					{
-						name: 'Protected checklist headings',
-						desc: () =>
-							'Comma-separated, not case-sensitive. In the checklist window, boxes under a heading containing one of these (or under a sub-heading of one) ' +
-							"can't be ticked: they're another person's record, such as a self-check or a gate. They can still be ticked in the note itself.",
-						render: (setting) => {
-							setting.addTextArea((t) =>
-								t
-									.setPlaceholder(DEFAULT_SETTINGS.protectedHeadings.join(', '))
-									.setValue(s.protectedHeadings.join(', '))
-									.onChange(async (v) => {
-										s.protectedHeadings = v
-											.split(',')
-											.map((x) => x.trim())
-											.filter(Boolean);
-										await this.plugin.saveSettings();
-									}),
-							);
-						},
-					},
-					{
 						name: 'Show sign-off count in the status bar',
 						desc: () => 'Shows how many tasks are waiting in review. Click it to open the sign-off window. Hidden when nothing is waiting.',
 						render: (setting) => {
@@ -396,6 +377,36 @@ export class SheikoSettingTab extends PluginSettingTab {
 									this.plugin.refreshStatusBar();
 								}),
 							);
+						},
+					},
+				],
+			},
+			{
+				// 0.2.4: own section, so the protected headings sit with the window they control (Sheikh, 2026-10-23).
+				heading: 'Checklist window',
+				rows: [
+					{
+						name: 'How the checklist window works',
+						desc: () =>
+							'"Checklist n/m" on a sign-off card opens the task\'s checklist in its own window. Ticks there are written to the note ' +
+							'and logged in its context section, and never move the task to review. It\'s view-only with no identity set, writes not allowed, or dry run on.',
+					},
+					{
+						name: 'Protected headings',
+						desc: () =>
+							'One per line, not case-sensitive. Boxes under a heading containing one of these words, or under a sub-heading of one, ' +
+							"can't be ticked from the checklist window: they're another person's record, such as a self-check or a gate. " +
+							'They can still be ticked in the note itself. Only real headings (#, ## …) count, not bold lines.',
+						render: (setting) => {
+							setting.addTextArea((t) => {
+								t.setPlaceholder(DEFAULT_SETTINGS.protectedHeadings.join('\n'))
+									.setValue(s.protectedHeadings.join('\n'))
+									.onChange(async (v) => {
+										s.protectedHeadings = parseHeadingList(v);
+										await this.plugin.saveSettings();
+									});
+								t.inputEl.rows = Math.max(4, s.protectedHeadings.length + 1);
+							});
 						},
 					},
 				],

@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeVault, runTimers } from './fake-vault';
 import { DEFAULT_SETTINGS } from '../src/settings';
-import { boxNoteText, checklistSections, parseBox, shortBox, tickContextText, toggledLine } from '../src/checklist';
+import { boxNoteText, checklistSections, parseBox, parseHeadingList, shortBox, tickContextText, toggledLine } from '../src/checklist';
 
 const WORDS = DEFAULT_SETTINGS.protectedHeadings;
 
@@ -157,4 +157,16 @@ test('editLine: a stale window edit does not suppress a later real tick', async 
 	v.plugin.tracker.onMetadataChanged(v.file(T));
 	await runTimers();
 	assert.equal(v.fm(T).status, 'in-review', 'the hand tick still fires auto-stage');
+});
+
+test('protected headings setting: one per line, commas kept, blanks and repeats dropped', () => {
+	assert.deepEqual(parseHeadingList('Pre-Handoff Checklist\n\n  Necessity check  \r\nsign-off\nSIGN-OFF\nReview, final pass'), [
+		'Pre-Handoff Checklist',
+		'Necessity check',
+		'sign-off',
+		'Review, final pass',
+	]);
+	assert.deepEqual(parseHeadingList(''), []);
+	const s = checklistSections('## Review, final pass\n- [ ] box\n', parseHeadingList('Review, final pass'));
+	assert.equal(s[0]?.protected, true, 'a heading with a comma can be protected');
 });

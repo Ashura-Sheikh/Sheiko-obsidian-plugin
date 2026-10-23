@@ -114,3 +114,19 @@ export function tickContextText(boxText: string, tick: boolean, comment = ''): s
 export function boxNoteText(boxText: string, comment: string): string {
 	return `Note on "${shortBox(boxText)}": ${comment.replace(/\s+/g, ' ').trim()}`;
 }
+
+/**
+ * 0.2.4: the "Protected headings" setting, one per line (Sheikh, 2026-10-23), so a heading
+ * with a comma in it can be entered as it is. Blank lines dropped, repeats (any case) kept once.
+ */
+export function parseHeadingList(text: string): string[] {
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const raw of text.split(/\r?\n/)) {
+		const h = raw.trim();
+		if (!h || seen.has(h.toLowerCase())) continue;
+		seen.add(h.toLowerCase());
+		out.push(h);
+	}
+	return out;
+}
