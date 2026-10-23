@@ -348,7 +348,7 @@ export class Tracker {
 		const history = parseHistory(content);
 		for (const t of list) {
 			if (t.kind === 'live' && !t.note && !isCompletedStatus(this.cfg, t.from) && isCompletedStatus(this.cfg, t.to)) {
-				t.note = closeNote(signoffState({ history, content, fm, reviewStatus: review, field: this.plugin.settings.signoffField }));
+				t.note = closeNote(signoffState({ history, content, fm, reviewStatus: review, field: this.plugin.settings.signoffField, identity: this.plugin.settings.identity }));
 			}
 			history.push(t);
 		}
@@ -409,6 +409,7 @@ export class Tracker {
 				fm,
 				reviewStatus: this.plugin.settings.reviewStatus,
 				field: this.plugin.settings.signoffField,
+				identity: this.plugin.settings.identity,
 			}),
 		);
 	}

@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeVault, resetNotices, runTimers } from './fake-vault';
 import { Notice } from './obsidian-mock';
-import { parseHistory } from '../src/lifecycle';
+import { formatContextLine, parseHistory } from '../src/lifecycle';
 import {
 	NO_SIGNOFF_NOTE,
 	SIGNOFF_PHRASE,
@@ -21,8 +21,8 @@ const C = (lines: string[]): string => `\n## Context\n\n${lines.join('\n')}\n`;
 const entered = '- 2026-10-23T10:00:00+01:00 — in-progress → in-review';
 const sign = (t: string, who = 'sheikh', text = SIGNOFF_PHRASE): string => `- **2026-10-23T${t}+01:00 — ${who}:** ${text}`;
 
-function state(content: string, fm: Record<string, unknown> = {}) {
-	return signoffState({ history: parseHistory(content), content, fm, reviewStatus: REVIEW, field: 'signedOff' });
+function state(content: string, fm: Record<string, unknown> = {}, identity = 'sheikh') {
+	return signoffState({ history: parseHistory(content), content, fm, reviewStatus: REVIEW, field: 'signedOff', identity });
 }
 
 // ---------- the pure rule ----------
@@ -239,4 +239,46 @@ test('index: a note that is not a task is never listed, even with a sign-off lin
 	await idx.rebuild();
 	assert.equal(idx.signed().some((f) => f.path === 'Notes/plain.md'), false);
 	assert.equal(idx.awaiting().some((f) => f.path === 'Notes/plain.md'), false);
+});
+
+// ---------- 0.2.4 gate (project-manager, item 2): only the user's own identity counts ----------
+
+test('identity: a sign-off under another name (e.g. an agent) does not count, in either form', () => {
+	assert.equal(state(H([entered]) + C([sign('11:00:00', 'technical-lead')])).signedOff, false);
+	assert.equal(state(H([entered]), { signedOff: '2026-10-23T11:00:00+01:00', signedOffBy: 'project-manager' }).signedOff, false);
+	assert.equal(closeNote(state(H([entered]) + C([sign('11:00:00', 'technical-lead')]))), NO_SIGNOFF_NOTE);
+});
+
+test('identity: the user\'s own sign-off counts, case and spaces ignored, in either form', () => {
+	assert.equal(state(H([entered]) + C([sign('11:00:00', 'Sheikh')]), {}, ' sheikh ').signedOff, true);
+	assert.equal(state(H([entered]), { signedOff: '2026-10-23T11:00:00+01:00', signedOffBy: 'SHEIKH' }).signedOff, true);
+});
+
+test('identity: another name\'s withdrawal does not cancel the user\'s sign-off', () => {
+	const s = state(H([entered]) + C([sign('11:00:00'), sign('11:05:00', 'technical-lead', WITHDRAW_PHRASE)]));
+	assert.equal(s.signedOff, true);
+	assert.equal(s.event?.who, 'sheikh');
+	// and the user's own withdrawal still does
+	assert.equal(state(H([entered]) + C([sign('11:00:00'), sign('11:05:00', 'sheikh', WITHDRAW_PHRASE)])).signedOff, false);
+});
+
+test('identity: an agent sign-off after the user\'s does not replace it as the one that counts', () => {
+	const s = state(H([entered]) + C([sign('11:00:00'), sign('11:05:00', 'technical-lead')]));
+	assert.equal(s.event?.at.toISOString(), '2026-10-23T10:00:00.000Z');
+});
+
+test('identity: with no identity set, nothing counts', () => {
+	assert.equal(state(H([entered]) + C([sign('11:00:00')]), {}, '').signedOff, false);
+	assert.equal(state(H([entered]), { signedOff: '2026-10-23T11:00:00+01:00', signedOffBy: 'sheikh' }, '  ').signedOff, false);
+});
+
+test('identity, real tracker and index: an agent-written sign-off line neither lists the task nor marks its close as signed off', async () => {
+	const v = await inReview();
+	const now = new Date();
+	await v.plugin.tracker.addContext(v.file(T), formatContextLine(now, 'technical-lead', SIGNOFF_PHRASE));
+	const idx = v.plugin.signoffIndex;
+	await idx.refresh(v.file(T));
+	assert.deepEqual(idx.signed(), []);
+	assert.deepEqual(idx.awaiting().map((f) => f.path), [T]);
+	assert.equal(await closeByAgent(v), NO_SIGNOFF_NOTE);
 });

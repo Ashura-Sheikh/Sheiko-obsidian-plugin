@@ -8,7 +8,8 @@
 // setting never hides an earlier sign-off.
 //
 // The rule: a task is signed off when the latest sign-off event (sign-off or
-// withdrawal) after it last entered review is a sign-off, and it is still in review
+// withdrawal) under the user's own identity, after it last entered review, is a
+// sign-off, and it is still in review
 // (no change since that entry). A task with no "entered review" line in its history
 // (e.g. from before Sheiko was installed) is never treated as signed off.
 
@@ -79,20 +80,32 @@ export function reviewEntry(history: Transition[], reviewStatus: string): Date |
 	return last && last.to === reviewStatus ? last.at : null;
 }
 
+/** Identities compare without regard to case or surrounding spaces. */
+export function sameIdentity(a: string, b: string): boolean {
+	return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
 export function signoffState(inp: {
 	history: Transition[];
 	content: string;
 	fm: Record<string, unknown>;
 	reviewStatus: string;
 	field: string;
+	/**
+	 * Whose sign-offs count: the user's identity from settings. Events under any other name
+	 * (e.g. an AI agent writing a Context line by hand) are ignored, sign-offs and withdrawals
+	 * alike. Blank = nothing counts. (0.2.4 gate, project-manager's read; Sheikh's go-ahead.)
+	 */
+	identity: string;
 }): SignoffState {
 	const reviewSince = reviewEntry(inp.history, inp.reviewStatus);
-	if (!reviewSince) return { signedOff: false, event: null, reviewSince: null };
+	if (!reviewSince || !inp.identity.trim()) return { signedOff: false, event: null, reviewSince };
 	const events = contextEvents(inp.content);
 	const fe = fieldEvent(inp.fm, inp.field);
 	if (fe) events.push(fe);
 	let latest: SignoffEvent | null = null;
 	for (const e of events) {
+		if (!sameIdentity(e.who, inp.identity)) continue;
 		if (e.at.getTime() < reviewSince.getTime()) continue;
 		// Later wins; on a tie a withdrawal wins, so a tie never reads as signed off.
 		if (!latest || e.at.getTime() > latest.at.getTime() || (e.at.getTime() === latest.at.getTime() && e.kind === 'withdraw')) {

@@ -30,7 +30,7 @@ export class SignoffIndex {
 		const content = await this.app.vault.read(file);
 		const fm = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
 		const s = this.settings();
-		const st = signoffState({ history: parseHistory(content), content, fm, reviewStatus: s.reviewStatus, field: s.signoffField });
+		const st = signoffState({ history: parseHistory(content), content, fm, reviewStatus: s.reviewStatus, field: s.signoffField, identity: s.identity });
 		const had = this.map.has(file.path);
 		if (st.signedOff && st.event) this.map.set(file.path, st.event);
 		else this.map.delete(file.path);
