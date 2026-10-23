@@ -4,6 +4,7 @@ import type SheikoPlugin from './main';
 import { DEFAULT_WEEK, WeekSchedule } from './lifecycle';
 import { ActiveSlot, parseSlotSpec } from './slot-logic';
 import type { SignoffForm } from './signoff-record';
+import { parseBandHours } from './age-bands';
 
 export interface SheikoSettings {
 	/** Written as `closedBy` and in Context entries. Blank = no `closedBy` is written. */
@@ -344,6 +345,25 @@ export class SheikoSettingTab extends PluginSettingTab {
 						name: 'Prompt for sign-off at the daily cutoff',
 						desc: () => "At each day's end time, ask about every task still waiting in review.",
 						render: toggle('promptAtCutoff'),
+					},
+					{
+						name: 'Age bands (hours)',
+						desc: () =>
+							'Bands for how long tasks have waited in review, shown at the top of the sign-off window. Comma-separated, rising, e.g. 3, 6, 12, 24 ' +
+							'(bands 3–6h, 6–12h, 12–24h, over 24h). Clock time since the task last entered review, nights and weekends included.',
+						render: (setting) => {
+							setting.addText((t) =>
+								t
+									.setPlaceholder(DEFAULT_SETTINGS.ageBandHours.join(', '))
+									.setValue(s.ageBandHours.join(', '))
+									.onChange(async (v) => {
+										const parsed = parseBandHours(v);
+										if (!parsed) return; // ignored until valid
+										s.ageBandHours = parsed;
+										await this.plugin.saveSettings();
+									}),
+							);
+						},
 					},
 					{
 						name: 'Show sign-off count in the status bar',

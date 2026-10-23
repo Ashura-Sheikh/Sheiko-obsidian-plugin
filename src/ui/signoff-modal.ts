@@ -12,6 +12,7 @@ import {
 	workerLabel,
 } from '../review';
 import { isCardOpen, pruneCardStates, recordCardToggle } from '../signoff-logic';
+import { AgeBand, ageBands, reviewSince } from '../age-bands';
 import { labelFor } from '../tasknotes';
 
 export type SignoffReason = 'review' | 'cutoff' | 'manual';
@@ -36,6 +37,8 @@ export class SignoffModal extends Modal {
 	private cardStates = new Map<string, boolean>();
 	/** Descriptions the user expanded with "Show more", by task path, kept across redraws (0.2.3). */
 	private expanded = new Set<string>();
+	/** 0.2.4: the age band the window is filtered to (its index), or null for all tasks. */
+	private bandFilter: number | null = null;
 	/** Owns the rendered Markdown in the cards; replaced on each redraw, unloaded on close (0.2.3). */
 	private md = new Component();
 
@@ -108,13 +111,57 @@ export class SignoffModal extends Modal {
 		}
 		pruneCardStates(files.map((f) => f.path), this.cardStates);
 		for (const path of [...this.expanded]) if (!files.some((f) => f.path === path)) this.expanded.delete(path);
-		files.forEach((file, i) => this.renderCard(contentEl, file, contents[i] ?? '', files.length > FOLD_ABOVE));
+		// 0.2.4: age bands (clock time since each task last entered review); a click filters the cards.
+		const now = new Date();
+		const bands = ageBands(
+			files.map((f, i) => ({ path: f.path, since: reviewSince(parseHistory(contents[i] ?? ''), this.plugin.settings.reviewStatus) })),
+			now,
+			this.plugin.settings.ageBandHours,
+		);
+		if (this.bandFilter !== null && !bands[this.bandFilter]) this.bandFilter = null;
+		this.renderBands(contentEl, bands);
+		const shown = this.bandFilter === null ? null : new Set(bands[this.bandFilter]?.paths ?? []);
+		files.forEach((file, i) => {
+			if (shown && !shown.has(file.path)) return;
+			this.renderCard(contentEl, file, contents[i] ?? '', files.length > FOLD_ABOVE);
+		});
+		if (shown && shown.size === 0) contentEl.createEl('p', { cls: 'sheiko-muted', text: 'No tasks in this band now.' });
 		new Setting(contentEl)
 			.setDesc('Tasks left for later stay in the status bar count. Click it to come back here.')
 			.addButton((b) => b.setButtonText('Later').onClick(() => this.close()));
 		this.modalEl.scrollTop = scroll.modal;
 		contentEl.scrollTop = scroll.content;
 		if (focus) this.restoreFocus(focus);
+	}
+
+	/** "In review: >3h [3] · >6h [10] · …", each band clickable; "All" clears the filter. */
+	private renderBands(parent: HTMLElement, bands: AgeBand[]): void {
+		if (bands.length === 0) return;
+		const line = parent.createDiv({ cls: 'sheiko-bands' });
+		line.createSpan({ text: 'In review: ' });
+		bands.forEach((b, i) => {
+			if (i > 0) line.createSpan({ cls: 'sheiko-muted', text: ' · ' });
+			const el = line.createEl('a', {
+				cls: `sheiko-band${this.bandFilter === i ? ' is-active' : ''}`,
+				href: '#',
+				text: `${b.label} [${b.paths.length}]`,
+				attr: { title: `${b.range} in review (clock time). Click to show only these.`, 'aria-pressed': String(this.bandFilter === i) },
+			});
+			el.addEventListener('click', (ev) => {
+				ev.preventDefault();
+				this.bandFilter = this.bandFilter === i ? null : i;
+				this.redraw();
+			});
+		});
+		if (this.bandFilter !== null) {
+			line.createSpan({ cls: 'sheiko-muted', text: ' · ' });
+			const all = line.createEl('a', { cls: 'sheiko-band', href: '#', text: 'All' });
+			all.addEventListener('click', (ev) => {
+				ev.preventDefault();
+				this.bandFilter = null;
+				this.redraw();
+			});
+		}
 	}
 
 	private captureFocus(): { path: string; start: number; end: number } | null {
