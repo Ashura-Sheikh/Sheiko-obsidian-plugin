@@ -87,3 +87,33 @@
     border: 1px solid var(--sheiko-priority-color);
     color: var(--sheiko-priority-color);
 }
+
+/* ---- 0.2.4: checklist pop-out window ---- */
+.sheiko-signoff .sheiko-checklist-link { cursor: pointer; }
+.sheiko-checklist { padding: 0.5em 1em 2em; }
+.sheiko-checklist .sheiko-muted { color: var(--text-muted); }
+.sheiko-checklist-head h3 { margin: 0.2em 0; }
+.sheiko-checklist-warn { color: var(--text-warning); font-size: var(--font-ui-small); }
+.sheiko-checklist-section {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    padding: 0.25em 0.75em 0.5em;
+    margin: 0.75em 0;
+}
+.sheiko-checklist-section.is-protected { background: var(--background-secondary); }
+.sheiko-checklist-item {
+    --sheiko-indent: 0em;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5em;
+    padding-left: var(--sheiko-indent);
+    margin: 0.2em 0;
+}
+.sheiko-checklist-item input[type='checkbox'] { flex: none; }
+.sheiko-checklist-label { flex: 1; min-width: 12em; }
+.sheiko-checklist-label > :first-child { margin-top: 0; }
+.sheiko-checklist-label > :last-child { margin-bottom: 0; }
+.sheiko-checklist-note-link { font-size: var(--font-ui-smaller); }
+.sheiko-checklist-note { margin: 0.25em 0 0.5em 1.75em; }
+.sheiko-checklist-note textarea { width: 100%; }

@@ -366,6 +366,26 @@ export class SheikoSettingTab extends PluginSettingTab {
 						},
 					},
 					{
+						name: 'Protected checklist headings',
+						desc: () =>
+							'Comma-separated, not case-sensitive. In the checklist window, boxes under a heading containing one of these (or under a sub-heading of one) ' +
+							"can't be ticked: they're another person's record, such as a self-check or a gate. They can still be ticked in the note itself.",
+						render: (setting) => {
+							setting.addTextArea((t) =>
+								t
+									.setPlaceholder(DEFAULT_SETTINGS.protectedHeadings.join(', '))
+									.setValue(s.protectedHeadings.join(', '))
+									.onChange(async (v) => {
+										s.protectedHeadings = v
+											.split(',')
+											.map((x) => x.trim())
+											.filter(Boolean);
+										await this.plugin.saveSettings();
+									}),
+							);
+						},
+					},
+					{
 						name: 'Show sign-off count in the status bar',
 						desc: () => 'Shows how many tasks are waiting in review. Click it to open the sign-off window. Hidden when nothing is waiting.',
 						render: (setting) => {

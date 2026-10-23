@@ -256,13 +256,31 @@ export class SignoffModal extends Modal {
 			checklist: boxes.length ? { done: boxes.filter((li) => li.task !== ' ').length, total: boxes.length } : null,
 			due: fm[cfg.field.due],
 		});
-		const parts: string[] = [];
-		if (facts.progressMs !== null) parts.push(`${labelFor(cfg, s.progressStatus)}: ${formatDuration(facts.progressMs)}`);
-		if (facts.inReviewSince) parts.push(`In review since ${toLocalIso(facts.inReviewSince).slice(0, 16).replace('T', ' ')}`);
-		if (facts.checklist) parts.push(`Checklist ${facts.checklist.done}/${facts.checklist.total}`);
-		if (facts.due) parts.push(`${facts.overdue ? '⚠️ Overdue' : 'Due'} ${facts.due.replace('T', ' ')}`);
-		if (facts.sentBack > 0) parts.push(`Sent back ${facts.sentBack}×`);
-		if (parts.length) details.createEl('p', { cls: 'sheiko-muted sheiko-facts', text: parts.join(' · ') });
+		// Each part is text, or a link: 0.2.4 makes "Checklist n/m" open the checklist pop-out.
+		const parts: { text: string; open?: () => void }[] = [];
+		if (facts.progressMs !== null) parts.push({ text: `${labelFor(cfg, s.progressStatus)}: ${formatDuration(facts.progressMs)}` });
+		if (facts.inReviewSince) parts.push({ text: `In review since ${toLocalIso(facts.inReviewSince).slice(0, 16).replace('T', ' ')}` });
+		if (facts.checklist) {
+			parts.push({ text: `Checklist ${facts.checklist.done}/${facts.checklist.total}`, open: () => void this.plugin.openChecklist(file) });
+		}
+		if (facts.due) parts.push({ text: `${facts.overdue ? '⚠️ Overdue' : 'Due'} ${facts.due.replace('T', ' ')}` });
+		if (facts.sentBack > 0) parts.push({ text: `Sent back ${facts.sentBack}×` });
+		if (parts.length) {
+			const p = details.createEl('p', { cls: 'sheiko-muted sheiko-facts' });
+			parts.forEach((part, i) => {
+				if (i > 0) p.appendText(' · ');
+				const open = part.open;
+				if (!open) {
+					p.appendText(part.text);
+					return;
+				}
+				const a = p.createEl('a', { cls: 'sheiko-checklist-link', href: '#', text: part.text, attr: { title: 'Open the checklist in its own window' } });
+				a.addEventListener('click', (ev) => {
+					ev.preventDefault();
+					open();
+				});
+			});
+		}
 
 		// Context box: always visible (outside the fold). The draft survives re-renders, and is
 		// saved before Approve / Send back so a note typed but not added isn't lost.

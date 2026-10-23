@@ -3,6 +3,7 @@ import { cutoffDue, parseTimestamp } from './lifecycle';
 import { SignoffIndex } from './signoff-index';
 import type { SignoffEvent } from './signoff-record';
 import { SignedOffModal } from './ui/signedoff-modal';
+import { CHECKLIST_VIEW, ChecklistView } from './ui/checklist-view';
 import { Roller } from './roller';
 import { kindIcon, kindLabel, normalizeActiveSlot } from './slot-logic';
 import { FocusSlots } from './slots';
@@ -42,6 +43,7 @@ export default class SheikoPlugin extends Plugin {
 		await this.loadPluginData();
 		this.taskNotes = await loadTaskNotesConfig(this.app);
 		this.signoffIndex = new SignoffIndex(this.app, () => this.taskNotes, () => this.settings);
+		this.registerView(CHECKLIST_VIEW, (leaf) => new ChecklistView(leaf, this));
 		this.tracker = new Tracker(this);
 		this.roller = new Roller(this);
 		this.slots = new FocusSlots(this);
@@ -256,6 +258,21 @@ export default class SheikoPlugin extends Plugin {
 
 	tasksSignedOff(): TFile[] {
 		return this.signoffIndex.signed();
+	}
+
+	/** 0.2.4: a task's checklist in a pop-out window. Reuses the window if it's already open. */
+	async openChecklist(file: TFile): Promise<void> {
+		const open = this.app.workspace
+			.getLeavesOfType(CHECKLIST_VIEW)
+			.find((l) => (l.view.getState() as { path?: unknown }).path === file.path);
+		if (open) {
+			// revealLeaf needs Obsidian 1.7.2; minAppVersion is 1.4.4, so focus the window and leaf directly.
+			open.view.containerEl.win.focus();
+			this.app.workspace.setActiveLeaf(open, { focus: true });
+			return;
+		}
+		const leaf = this.app.workspace.openPopoutLeaf({ size: { width: 560, height: 680 } });
+		await leaf.setViewState({ type: CHECKLIST_VIEW, active: true, state: { path: file.path } });
 	}
 
 	openSignedOff(): void {
