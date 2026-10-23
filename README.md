@@ -57,14 +57,23 @@ Once allowed, it writes to **task notes** (frontmatter: `completedDate`, `closed
   - **Needs an identity.** With none set, *Sign off* is greyed out: an anonymous sign-off can't tell anyone who signed.
   - **When the task is closed later,** by anyone, Sheiko notes it on the history line: `in-review → done (signed off by <identity> at <time>)`, or `(no sign-off recorded)` if there was no valid sign-off. *Sign off and close* keeps its own note, as before.
 - **Signed off, waiting to close (0.2.4).** Signed-off tasks leave the sign-off window, its count and the end-of-day prompt. They're listed in their own window, opened from **✓ N signed off** in the status bar, the link at the top of the sign-off window, or the command palette. Each has *Open*, *Withdraw sign-off* (adds a withdrawal line; nothing is removed) and *Close now*.
-- **Checklist window (0.2.4).** *Checklist n/m* on a card opens the task's checklist in its own **pop-out window**, which you can move and resize. It shows every section of the note that has checkboxes, in full: heading, text and boxes.
+- **Checklist window (0.2.4).** *Checklist n/m* on a card opens the task's checklist in its own **pop-out window**, which you can move and resize. It's there to make review easier: more of the task in front of you before you make a call or sign off. It shows every section of the note that has checkboxes, in full: heading, text and boxes. *Open note* opens the note in Obsidian's main window.
   - **Ticking writes to the note:** one character on that line, and only if the line hasn't changed since the window drew it. Every tick is logged as a Context line ("Ticked … from the checklist window"), and a ticked box has *Add note* for a comment, also added to Context.
   - **Ticks here never move the task.** Ticking the last box from the window doesn't trigger the move to review.
   - **Protected sections are view-only:** any heading containing *Pre-Handoff Checklist*, *Necessity check* or *sign-off* (and its sub-headings). Those boxes are someone else's record, such as a self-check or a gate, so they're ticked in the note itself. The list is a setting.
   - View-only, too, with no identity set, writes not allowed in the vault, or dry run on.
 - **Coming back to "Later".** The status bar shows **⭐ N awaiting sign-off**. Click it to reopen the window with everything still in review. It's hidden when nothing is waiting, and you can switch it off.
 
-![The Sign-off needed window: one card per task with Open, Send back and Approve and close, a worker badge (AI agent, Human, or Worker: not recorded), a folded Summary and context panel, and a context box](docs/screenshots/sign-off-window.png)
+![The Sign-off needed window next to the checklist pop-out. The window shows a link to 2 signed-off tasks, the age bands (>3h [0], >6h [0], >12h [0], >24h [3]), and cards with Open, Send back, Sign off and Sign off and close, a priority pill, the worker badge and a Checklist 1/3 link. The pop-out shows that task's checklist with one box ticked and Add note beside it](docs/screenshots/signoff-and-checklist.png)
+
+<p>
+  <img src="docs/screenshots/signoff-card-buttons.png" alt="One sign-off card: Open, Send back to In progress, Sign off and Sign off and close, a Low priority pill and the worker badge" width="49%">
+  <img src="docs/screenshots/signed-off-list.png" alt="Signed off, waiting to close: two tasks, each with a priority pill, who signed off and when, and Open, Withdraw sign-off and Close now" width="49%">
+</p>
+
+![The checklist pop-out with Add note open under a ticked box: a text box, Cancel and Add note](docs/screenshots/checklist-add-note.png)
+
+![The status-bar item: ✓ 2 signed off](docs/screenshots/status-bar-signed-off.png)
 
 ![The status bar showing 4 awaiting sign-off and a running Deep work until 13:50 slot](docs/screenshots/status-bar.png)
 
