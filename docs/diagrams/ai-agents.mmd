@@ -1,0 +1,55 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 360
+  themeVariables:
+    edgeLabelBackground: '#0d1117'
+---
+%% Node IDs a1-a3 are deliberately not in label order: the layout puts a3 leftmost, so a3 is labelled "AI Agent 1". See docs/diagrams/README.md.
+flowchart TD
+    subgraph agents["AI agents, each on its own task"]
+        direction LR
+        a1["AI Agent 2 · Task B<br/>edits the note, adds Context lines,<br/>ticks boxes"]
+        a2["AI Agent 3 · Task C<br/>edits the note, adds Context lines,<br/>ticks boxes"]
+        a3["AI Agent 1 · Task A<br/>edits the note, adds Context lines,<br/>ticks boxes"]
+        ax["Any AI agent<br/>types a sign-off line into Context<br/>under its own name"]
+        ay["Any AI agent<br/>sets a task to done itself"]
+    end
+    subgraph sheiko["Sheiko, automatic"]
+        direction TB
+        s1["Logs every status change in Status History<br/>Obsidian open: the real time<br/>Obsidian closed: 'detected at startup'"]
+        s2["Task enters review<br/>only for changes seen while Obsidian is open"]
+        s3["One sign-off window for all of them<br/>a card per task, added as each arrives,<br/>each with the 'AI agent' badge<br/>cards fold when more than 3 wait<br/>⭐ N awaiting in the status bar<br/>held during a break or deep-work slot"]
+        s4["Ignored: a sign-off under<br/>any name but yours"]
+        s5["On a close seen while Obsidian is open:<br/>fields the agent wrote are kept;<br/>blank ones are filled in, closedBy = your identity<br/>history notes '(no sign-off recorded)'<br/>unless you signed off first"]
+    end
+    subgraph you["You"]
+        direction TB
+        y1["Review each card and its checklist window<br/>protected sections (e.g. a Pre-Handoff Checklist)<br/>are view-only there"]
+        y2["Sign off: stays in review, marked signed off<br/>Sign off and close: done"]
+        y3["Send back"]
+    end
+    a1 -->|"ticks the last box,<br/>or sets status to review"| s2
+    a2 --> s2
+    a3 --> s2
+    agents -.->|"every status change,<br/>from any agent"| s1
+    ax -->|"tries to sign off"| s4
+    ay -->|"closes without your sign-off"| s5
+    s2 --> s3
+    s3 -->|"prompts you"| y1
+    y1 --> y2
+    y1 --> y3
+    y3 -->|"back to in progress,<br/>for that task's agent"| agents
+
+    classDef agent fill:#2d1a08,stroke:#f0883e,color:#ffa657,stroke-width:2px
+    classDef plugin fill:#0b2238,stroke:#58a6ff,color:#79c0ff,stroke-width:2px
+    classDef human fill:#0d2a17,stroke:#3fb950,color:#7ee787,stroke-width:2px
+    class a1,a2,a3,ax,ay agent
+    class s1,s2,s3,s4,s5 plugin
+    class y1,y2,y3 human
+    style agents fill:#161b22,stroke:#f0883e,color:#ffa657
+    style sheiko fill:#161b22,stroke:#58a6ff,color:#79c0ff
+    style you fill:#161b22,stroke:#3fb950,color:#7ee787
+    linkStyle 0,1,2,3,4,5 stroke:#f0883e,stroke-width:2px,color:#ffa657
+    linkStyle 6,7 stroke:#58a6ff,stroke-width:2px,color:#79c0ff
+    linkStyle 8,9,10 stroke:#3fb950,stroke-width:2px,color:#7ee787

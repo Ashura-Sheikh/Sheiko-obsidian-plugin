@@ -8,7 +8,7 @@ An Obsidian plugin that works **alongside [TaskNotes](https://github.com/calluma
 
 *Click the ribbon icon (history clock) on a TaskNotes task to open the lifecycle window. Screenshots are from the developer's test vault: sample task names are test data and may not match the task's current status, and some settings differ from the defaults below.*
 
-**Contents:** [How it fits together](#how-it-fits-together) · [Before you start](#before-you-start-what-sheiko-changes-in-your-vault) · [Getting started](#getting-started) · [Requirements](#requirements) · [Compatibility](#compatibility) · [Lifecycle tracking](#1-lifecycle-tracking) · [Auto-stage and sign-off](#2-auto-stage-and-sign-off) · [Auto-roll](#3-auto-roll) · [Breaks and deep work](#4-breaks-and-deep-work) · [Commands](#commands) · [Settings](#settings) · [Known limits](#known-limits) · [Development](#development)
+**Contents:** [How it fits together](#how-it-fits-together) · [Working with AI agents](#working-with-ai-agents) · [Before you start](#before-you-start-what-sheiko-changes-in-your-vault) · [Getting started](#getting-started) · [Requirements](#requirements) · [Compatibility](#compatibility) · [Lifecycle tracking](#1-lifecycle-tracking) · [Auto-stage and sign-off](#2-auto-stage-and-sign-off) · [Auto-roll](#3-auto-roll) · [Breaks and deep work](#4-breaks-and-deep-work) · [Commands](#commands) · [Settings](#settings) · [Known limits](#known-limits) · [Development](#development)
 
 ## How it fits together
 
@@ -29,6 +29,12 @@ Every step is recorded in the task note: status changes in `## Status History`, 
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Ashura-Sheikh/Sheiko-obsidian-plugin/HEAD/docs/diagrams/feature-map-dark.png">
   <img src="docs/diagrams/feature-map-light.png" alt="Feature map. Sheiko reads TaskNotes' statuses, fields and timer without changing its settings. Two safety switches apply to every feature: Allow writes in this vault, off, and Dry run, off. Feature 1, Lifecycle tracking (context log, status history, closure fields, time per status), has no switch and writes to task notes. Feature 2, Auto-stage and sign-off (forward moves, sign-off window, signed-off list, checklist window), has five switches, all on: Timer start moves task to working; All boxes ticked moves task to review; Prompt for sign-off on review; Prompt for sign-off at the daily cutoff; Show sign-off count in the status bar. It writes to task notes. Feature 3, Auto-roll, has one switch, Roll unfinished tasks at the end of each day, off, and writes to task notes and the daily note's Rolled Over section. Feature 4, Breaks and deep work, has no switch (start a slot yourself or schedule slots per weekday) and writes one report note per day in Sheiko Reports.">
 </picture>
+
+### Working with AI agents
+
+Colours show who acts: orange for AI agents, blue for Sheiko, green for you. The prompt step assumes the default switches and a review status set (see [Getting started](#getting-started), step 4).
+
+<img src="docs/diagrams/ai-agents-dark.png" alt="Diagram of AI agents working alongside Sheiko, with orange for AI agents, blue for Sheiko and green for you. AI Agents 1, 2 and 3 each work on their own task (A, B, C): they edit the note, add Context lines and tick boxes. When an agent ticks the last box, or sets the status to review, the task enters review (only for changes seen while Obsidian is open). All the tasks go to one sign-off window: a card per task, added as each arrives, each with the AI agent badge; cards fold when more than 3 wait; the status bar shows the number awaiting; prompts are held during a break or deep-work slot. Every status change is logged in Status History, at the real time if Obsidian is open, or as detected at startup if it was closed. Sheiko prompts you: you review each card and its checklist window, where protected sections such as a Pre-Handoff Checklist are view-only. You then Send back, which returns the task to in progress for that task's agent, or Sign off (it stays in review, marked signed off) or Sign off and close (done). When any AI agent types a sign-off line into Context under its own name, Sheiko ignores it, because only sign-offs under your name count. When any AI agent sets a task to done itself, while Obsidian is open, Sheiko keeps the fields the agent wrote, fills the blank ones with closedBy set to your identity, and the history notes no sign-off recorded unless you signed off first.">
 
 The diagrams' Mermaid source is in [`docs/diagrams/`](docs/diagrams/).
 
@@ -85,8 +91,8 @@ To find TaskNotes tasks it looks through the vault's Markdown files (Obsidian's 
 ### Closure fields
 
 - `completedDate` (full ISO), `closedBy` (only if an identity is set) and `timeToCloseMinutes` are written **only for a close Sheiko saw happen live**.
-- Sheiko never overwrites a close written by hand or by another tool.
-- Closes it recorded are marked `closureSource: sheiko`, and a reopen clears only those.
+- Sheiko never overwrites a closure field already there, whether written by hand, by an AI agent or by another tool. On a live close it fills only the **blank** ones. That includes `closedBy`, set to your identity even when someone else, such as an agent, closed the task ([#19](https://github.com/Ashura-Sheikh/Sheiko-obsidian-plugin/issues/19)).
+- If Sheiko filled any field, it marks the note `closureSource: sheiko`. A reopen then clears **all** the closure fields on that note, including ones it didn't write ([#19](https://github.com/Ashura-Sheikh/Sheiko-obsidian-plugin/issues/19)). A note without that mark is left alone on reopen.
 
 ### Time per status, in three buckets
 
@@ -296,7 +302,8 @@ Statuses and field names are read from TaskNotes' settings rather than hardcoded
 **Tracking**
 
 - A task first seen by Sheiko has no earlier history. It's tracked from then on, with nothing backfilled.
-- If a close written by an agent or by hand is reopened and then closed again live, the original `closedBy` / `timeToCloseMinutes` are kept, so they can be stale.
+- If a close written by an agent or by hand is reopened and then closed again live, the original `closedBy` / `timeToCloseMinutes` are kept, so they can be stale. This applies only if Sheiko didn't mark the note `closureSource: sheiko`; see the next point.
+- **A close Sheiko didn't make** (for example, an agent setting a task to done while Obsidian is open) gets its blank closure fields filled, including `closedBy` = your identity. Then, if the task is reopened, all its closure fields are cleared, including the agent's own `completedDate` and `closedBy`. Tracked in [#19](https://github.com/Ashura-Sheikh/Sheiko-obsidian-plugin/issues/19).
 - If a task's only recorded status change is the close itself, the Lifecycle Summary's *Time per status* table has no rows.
 - Sheiko waits 600 ms after a change so TaskNotes can finish its own writes. That delay is a timing assumption.
 - Tested only against TaskNotes 4.13.4. A change to TaskNotes' frontmatter or settings shape could break Sheiko.
