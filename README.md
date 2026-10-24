@@ -2,7 +2,7 @@
 
 An Obsidian plugin that works **alongside [TaskNotes](https://github.com/callumalpass/tasknotes)**. It tracks each task's lifecycle, prompts you to sign off tasks in review, and rolls unfinished tasks to the next day.
 
-> **Status: early release (v0.2.4), desktop only.** Plugin ID `sheiko-task-lifecycle`. Tested against TaskNotes **4.13.4**. Listed in the [Obsidian Community directory](https://community.obsidian.md/plugins/sheiko-task-lifecycle).
+> **Status: early release (v0.2.5), desktop only.** Plugin ID `sheiko-task-lifecycle`. Tested against TaskNotes **4.13.4**. Listed in the [Obsidian Community directory](https://community.obsidian.md/plugins/sheiko-task-lifecycle).
 
 ![The lifecycle window on a closed task: Context, Closure, and time per status split into working, overnight and weekend](docs/screenshots/lifecycle-window.png)
 
@@ -168,6 +168,7 @@ Under the window's title (see the first screenshot above): *In review: >3h [n] Â
   - A task sent back and returned to review needs signing off again.
   - Free text such as "signing off" in a Context entry isn't read as a sign-off.
 - **Needs an identity.** With none set, *Sign off* is greyed out: an anonymous sign-off can't tell anyone who signed.
+- **Needs a recorded move into review (0.2.5).** If the task's Status History doesn't end with a move into review (for example, it went to review before Sheiko tracked it), a sign-off couldn't count. *Sign off* is greyed out, and the card says why. Use *Sign off and close*, or move the task out of review and back. A move into review logged "detected at startup" counts. ([#21](https://github.com/Ashura-Sheikh/Sheiko-obsidian-plugin/issues/21))
 - **When the task is closed later,** by anyone, Sheiko notes it on the history line: `in-review â†’ done (signed off by <identity> at <time>)`, or `(no sign-off recorded)` if there was no valid sign-off. *Sign off and close* keeps its own note, as before.
 
 ### Signed off, waiting to close (0.2.4)
@@ -311,7 +312,6 @@ Statuses and field names are read from TaskNotes' settings rather than hardcoded
 
 **Sign-off**
 
-- **A task with no recorded move into review** can't be signed off without closing. This includes a task that went to review before Sheiko tracked it, so it has no `## Status History`. *Sign off* still writes its line, but it never counts: the task stays in the sign-off window, and a later close is noted `(no sign-off recorded)`. Use *Sign off and close*, or move the task out of review and back. A fix that greys out *Sign off* in this case is tracked in [#21](https://github.com/Ashura-Sheikh/Sheiko-obsidian-plugin/issues/21).
 - **Closing a task from TaskNotes itself** (the status pill, a board drag) is recorded as `(no sign-off recorded)` unless *Sign off* was used first, even when you close it yourself. Sheiko can't tell who changed the status. *Sign off and close* records it as signed off.
 - **Changing your identity** means sign-offs made under the old one no longer count.
 - **Free-text sign-offs aren't read.** A Context entry such as "Reviewed - signing off" doesn't count; only *Sign off*'s fixed record does. Sign-offs typed before 0.2.4 aren't recognised.
@@ -359,14 +359,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs and open pull requ
 | `settings.ts` | Settings |
 | `ui/` | Lifecycle, sign-off, signed-off, checklist pop-out and slot windows |
 
-**Tests (`test/`):** 114 tests run the real tracker, auto-roll and slot code against an in-memory vault and a stand-in for the `obsidian` module (`test/obsidian-mock.ts`). They cover the code that edits notes:
+**Tests (`test/`):** 121 tests run the real tracker, auto-roll and slot code against an in-memory vault and a stand-in for the `obsidian` module (`test/obsidian-mock.ts`). They cover the code that edits notes:
 
 - closure fields, reopen, startup catch-up, dry run and the edit limit;
 - what does and doesn't roll;
 - sign-off summaries, sign-off window routing and card fold state, and sign-off descriptions;
 - time-split formatting and rounding;
 - slot holds and reports;
-- (0.2.4) the sign-off rule in both forms, the signed-off index, age bands, priorities, checklist sections and protection, and the checklist window's guarded line edit.
+- (0.2.4) the sign-off rule in both forms, the signed-off index, age bands, priorities, checklist sections and protection, and the checklist window's guarded line edit;
+- (0.2.5) *Sign off* being off when a task has no recorded move into review.
 
 The repo's build workflow (`.github/workflows/lint.yml`) also runs them.
 
