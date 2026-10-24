@@ -30,5 +30,6 @@ npx -y @mermaid-js/mermaid-cli@12.0.0 -i docs/diagrams/ai-agents.mmd -o docs/dia
 
 - `⚙️ <name> · on/off` is a switch in Sheiko's settings and its default. Names match the settings tab (`src/settings.ts`). Defaults match `DEFAULT_SETTINGS`.
 - In `ai-agents.mmd`, colours mean who acts: orange `#f0883e` for AI agents, blue `#58a6ff` for Sheiko, green `#3fb950` for the user. They're set with `classDef` (boxes and text), `style` (lanes) and `linkStyle` (arrows, by edge order). **If you add or reorder an edge, update the `linkStyle` indexes.**
+- In `ai-agents.mmd`, node IDs `a1`–`a3` don't match their labels (`a3` is "AI Agent 1"). The layout engine places `a3` leftmost, so the labels are swapped to read 1, 2, 3 left to right. If you change the agent boxes, re-render and check the order.
 - `wrappingWidth: 360` in each file's front matter keeps boxes wide enough that the setting names fit on one line.
 - Check the journey against the code when the flow changes: `checkCutoff` in `src/main.ts` (end-of-day roll and prompt are separate), and the buttons in `src/ui/signoff-modal.ts` and `src/ui/signedoff-modal.ts`.
