@@ -8,53 +8,29 @@ An Obsidian plugin that works **alongside [TaskNotes](https://github.com/calluma
 
 *Click the ribbon icon (history clock) on a TaskNotes task to open the lifecycle window. Screenshots are from the developer's test vault: sample task names are test data and may not match the task's current status, and some settings differ from the defaults below.*
 
-**Contents:** [How it fits together](#how-it-fits-together) · [Before you start](#before-you-start-what-sheiko-changes-in-your-vault) · [Getting started](#getting-started) · [Lifecycle tracking](#1-lifecycle-tracking) · [Auto-stage and sign-off](#2-auto-stage-and-sign-off) · [Auto-roll](#3-auto-roll) · [Breaks and deep work](#4-breaks-and-deep-work) · [Commands](#commands) · [Settings](#settings) · [Known limits](#known-limits) · [Development](#development)
+**Contents:** [How it fits together](#how-it-fits-together) · [Before you start](#before-you-start-what-sheiko-changes-in-your-vault) · [Getting started](#getting-started) · [Requirements](#requirements) · [Compatibility](#compatibility) · [Lifecycle tracking](#1-lifecycle-tracking) · [Auto-stage and sign-off](#2-auto-stage-and-sign-off) · [Auto-roll](#3-auto-roll) · [Breaks and deep work](#4-breaks-and-deep-work) · [Commands](#commands) · [Settings](#settings) · [Known limits](#known-limits) · [Development](#development)
 
 ## How it fits together
 
+⚙️ marks a switch in Sheiko's settings, with its default. The checkbox move and both sign-off prompts also need a review status (see [Getting started](#getting-started), step 4).
+
 ### A task's journey
 
-```mermaid
-flowchart TD
-    open(["Task open"]) -->|"TaskNotes timer started"| prog["In progress"]
-    prog -->|"last checkbox ticked,<br/>or status set by hand"| review["In review"]
-    review -->|"if the review prompt is on"| win{{"Sign-off window"}}
-    cutoff(["Daily end time"]) -->|"if auto-roll is on"| roll["Auto-roll: unfinished tasks<br/>scheduled for tomorrow"]
-    roll -->|"if the end-of-day prompt is on"| win
-    slot(["Break or deep-work slot running"]) -.->|"holds prompts until it ends"| win
-    win -->|"Send back"| prog
-    win -->|"Later"| later["Still in review<br/>⭐ N awaiting sign-off"]
-    later -->|"click the status bar"| win
-    win -->|"Sign off"| signed["Signed off, still in review<br/>✓ N signed off"]
-    signed -->|"Withdraw sign-off"| review
-    signed -->|"Close now, or closed elsewhere"| done(["Done<br/>history notes who signed off"])
-    win -->|"Sign off and close"| done
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Ashura-Sheikh/Sheiko-obsidian-plugin/HEAD/docs/diagrams/journey-dark.png">
+  <img src="docs/diagrams/journey-light.png" alt="Flowchart of a task's journey. A TaskNotes timer start moves an open task to In progress (switch: Timer start moves task to working, on). Ticking the last checkbox (switch: All boxes ticked moves task to review, on), or setting the status by hand, moves it to In review. Entering review opens the Sign-off window (switch: Prompt for sign-off on review, on). At the daily end time, two separate things happen: the Sign-off window opens (switch: Prompt for sign-off at the daily cutoff, on), and auto-roll moves unfinished tasks to tomorrow (switch: Roll unfinished tasks at the end of each day, off). A running break or deep-work slot holds prompts until it ends. From the Sign-off window: Send back returns the task to In progress; Later leaves it in review, counted in the status bar (switch: Show sign-off count in the status bar, on), and clicking that reopens the window; Sign off leaves it in review as signed off, from where Withdraw sign-off returns it to review and Close now, or a close elsewhere, makes it Done with a history note of who signed off; Sign off and close makes it Done directly.">
+</picture>
 
 Every step is recorded in the task note: status changes in `## Status History`, notes and sign-offs in `## Context` (sign-offs can go in frontmatter instead, a setting), and time per status in `## Lifecycle Summary`. Automatic moves only go forward, and **closing is always a click by you, never automatic.**
 
 ### Feature map
 
-```mermaid
-flowchart TB
-    tn["TaskNotes<br/>statuses, fields, timer"] -.->|"settings read, not changed"| features
-    subgraph features["Sheiko"]
-        direction LR
-        f1["1. Lifecycle tracking<br/>context log, status history,<br/>closure fields, time per status"]
-        f2["2. Auto-stage and sign-off<br/>forward moves, sign-off window,<br/>signed-off list, checklist window"]
-        f3["3. Auto-roll<br/>unfinished tasks to the next day"]
-        f4["4. Breaks and deep work<br/>slots hold prompts and log activity"]
-        f1 ~~~ f2 ~~~ f3 ~~~ f4
-    end
-    task[("Task notes<br/>frontmatter, Context,<br/>Status History, Lifecycle Summary")]
-    daily[("Daily note<br/>🔁 Rolled Over")]
-    reports[("Sheiko Reports/<br/>one note per day")]
-    f1 --> task
-    f2 --> task
-    f3 --> task
-    f3 --> daily
-    f4 --> reports
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Ashura-Sheikh/Sheiko-obsidian-plugin/HEAD/docs/diagrams/feature-map-dark.png">
+  <img src="docs/diagrams/feature-map-light.png" alt="Feature map. Sheiko reads TaskNotes' statuses, fields and timer without changing its settings. Two safety switches apply to every feature: Allow writes in this vault, off, and Dry run, off. Feature 1, Lifecycle tracking (context log, status history, closure fields, time per status), has no switch and writes to task notes. Feature 2, Auto-stage and sign-off (forward moves, sign-off window, signed-off list, checklist window), has five switches, all on: Timer start moves task to working; All boxes ticked moves task to review; Prompt for sign-off on review; Prompt for sign-off at the daily cutoff; Show sign-off count in the status bar. It writes to task notes. Feature 3, Auto-roll, has one switch, Roll unfinished tasks at the end of each day, off, and writes to task notes and the daily note's Rolled Over section. Feature 4, Breaks and deep work, has no switch (start a slot yourself or schedule slots per weekday) and writes one report note per day in Sheiko Reports.">
+</picture>
+
+The diagrams' Mermaid source is in [`docs/diagrams/`](docs/diagrams/).
 
 ## Before you start: what Sheiko changes in your vault
 
@@ -71,6 +47,7 @@ Once allowed, it writes only to these places:
 |---|---|
 | Task notes, frontmatter | `completedDate`, `closedBy`, `timeToCloseMinutes`, `timeWorkingMinutes`, `timeOvernightMinutes`, `timeWeekendMinutes`, `closureSource`, `scheduled`, `rollCount`, `status`, and `signedOff` / `signedOffBy` if you choose the field form for sign-offs (names are a setting) |
 | Task notes, sections | `## Context`, `## Status History`, `## Lifecycle Summary` |
+| Task notes, checkbox lines | Ticking or unticking a box from the checklist window changes that box (`[ ]` ↔ `[x]`) on its line, in any section the window allows. Nothing else on the line changes. |
 | That day's daily note | `## 🔁 Rolled Over`, when auto-roll runs. The note is created if it doesn't exist. |
 | Report notes | Only if you use break or deep-work slots: one note per day in a report folder (default `Sheiko Reports/`), named by date, e.g. `Sheiko Reports/2026-10-06.md`. Each slot adds a block; earlier blocks are never changed. No slots, no report notes. |
 
@@ -82,7 +59,19 @@ To find TaskNotes tasks it looks through the vault's Markdown files (Obsidian's 
 2. In this plugin's settings, switch on **Allow writes in this vault**.
 3. Optional: enter **Your identity**. It's written as `closedBy` on closes Sheiko records. Left blank, `closedBy` isn't written.
 4. Optional, for the sign-off flow: add a review status (e.g. `in-review`) in TaskNotes' settings, then pick it as **Review status** here. Until a review status is picked, the checkbox move and both sign-off prompts stay off.
-5. Optional: set your **working hours**, try **Dry run**, then switch on **auto-roll**.
+5. Optional: set your **working hours**, try **Dry run**, then switch on **auto-roll**. If TaskNotes' *scheduled-date rollover* workflow is on, use only one of the two, or tasks will move twice (see [Compatibility](#compatibility)).
+
+## Requirements
+
+- Obsidian **1.4.4+**, desktop only
+- **TaskNotes** installed and enabled (tested on 4.13.4)
+- Obsidian's Daily Notes settings (folder and date format) are used for the Rolled Over summary
+
+![Installed plugins: Sheiko Task Lifecycle v0.2.4 by Sheikh M Sahil, enabled](docs/screenshots/installed-plugins.png)
+
+## Compatibility
+
+- **TaskNotes Workflows:** its optional *scheduled-date rollover* workflow and Sheiko's auto-roll both move `scheduled` forward. Use one or the other, not both, or tasks will move twice.
 
 ## 1. Lifecycle tracking
 
@@ -301,18 +290,6 @@ Statuses and field names are read from TaskNotes' settings rather than hardcoded
 | AI agent names | *(empty)* | Comma-separated, not case-sensitive. Any other name shows as human |
 | Report folder | `Sheiko Reports` | One note per day for slot reports |
 | Slots (per weekday) | *(blank)* | e.g. `12:30-13:00 break, 14:00-15:30 deep work`. Blank = none. Bad entries are flagged, not guessed |
-
-## Requirements
-
-- Obsidian **1.4.4+**, desktop only
-- **TaskNotes** installed and enabled (tested on 4.13.4)
-- Obsidian's Daily Notes settings (folder and date format) are used for the Rolled Over summary
-
-![Installed plugins: Sheiko Task Lifecycle v0.2.4 by Sheikh M Sahil, enabled](docs/screenshots/installed-plugins.png)
-
-## Compatibility
-
-- **TaskNotes Workflows:** its optional *scheduled-date rollover* workflow and Sheiko's auto-roll both move `scheduled` forward. Use one or the other, not both, or tasks will move twice.
 
 ## Known limits
 
