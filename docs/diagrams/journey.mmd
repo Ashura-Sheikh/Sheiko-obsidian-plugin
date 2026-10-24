@@ -1,0 +1,19 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 360
+---
+flowchart TD
+    open(["Task open"]) -->|"TaskNotes timer started<br/>⚙️ Timer start moves task to working · on"| prog["In progress"]
+    prog -->|"last checkbox ticked<br/>⚙️ All boxes ticked moves task to review · on<br/>or status set by hand"| review["In review"]
+    review -->|"⚙️ Prompt for sign-off on review · on"| win{{"Sign-off window"}}
+    cutoff(["Daily end time"]) -->|"⚙️ Roll unfinished tasks<br/>at the end of each day · off"| roll["Auto-roll: unfinished tasks<br/>scheduled for tomorrow"]
+    cutoff -->|"⚙️ Prompt for sign-off<br/>at the daily cutoff · on"| win
+    slot(["Break or deep-work slot running"]) -.->|"holds prompts until it ends"| win
+    win -->|"Send back"| prog
+    win -->|"Later"| later["Still in review<br/>⭐ N awaiting sign-off"]
+    later -->|"click the status bar<br/>⚙️ Show sign-off count in the status bar · on"| win
+    win -->|"Sign off"| signed["Signed off, still in review<br/>✓ N signed off"]
+    signed -->|"Withdraw sign-off"| review
+    signed -->|"Close now, or closed elsewhere"| done(["Done<br/>history notes who signed off"])
+    win -->|"Sign off and close"| done

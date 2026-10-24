@@ -1,0 +1,20 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 360
+---
+flowchart TB
+    tn["TaskNotes<br/>statuses, fields, timer"] -.->|"settings read, not changed"| sheiko(["Sheiko"])
+    safety["Safety, for every feature<br/>⚙️ Allow writes in this vault · off<br/>⚙️ Dry run · off"] -.-> sheiko
+    sheiko --> f1["1. Lifecycle tracking<br/>context log, status history,<br/>closure fields, time per status<br/><i>no switch: on once writes are allowed</i>"]
+    sheiko --> f2["2. Auto-stage and sign-off<br/>forward moves, sign-off window,<br/>signed-off list, checklist window<br/>⚙️ Timer start moves task to working · on<br/>⚙️ All boxes ticked moves task to review · on<br/>⚙️ Prompt for sign-off on review · on<br/>⚙️ Prompt for sign-off at the daily cutoff · on<br/>⚙️ Show sign-off count in the status bar · on"]
+    sheiko --> f3["3. Auto-roll<br/>unfinished tasks to the next day<br/>⚙️ Roll unfinished tasks<br/>at the end of each day · off"]
+    sheiko --> f4["4. Breaks and deep work<br/>slots hold prompts and log activity<br/><i>no switch: start a slot yourself,<br/>or schedule slots per weekday</i>"]
+    task[("Task notes<br/>frontmatter, Context,<br/>Status History, Lifecycle Summary,<br/>checklist ticks")]
+    daily[("Daily note<br/>🔁 Rolled Over")]
+    reports[("Sheiko Reports/<br/>one note per day")]
+    f1 --> task
+    f2 --> task
+    f3 --> task
+    f3 --> daily
+    f4 --> reports
