@@ -35,7 +35,7 @@ import {
 } from './lifecycle';
 import { TaskNotesConfig, hasStatus, isCompletedStatus, isTaskFile, labelFor, orderOf, statusOf } from './tasknotes';
 import { vaultBasePath } from './settings';
-import { SIGNOFF_PHRASE, WITHDRAW_PHRASE, byField, closeNote, signoffState } from './signoff-record';
+import { NO_REVIEW_ENTRY_REASON, SIGNOFF_PHRASE, WITHDRAW_PHRASE, byField, closeNote, reviewEntry, signoffState } from './signoff-record';
 
 export const FIELD = {
 	closedBy: 'closedBy',
@@ -356,11 +356,18 @@ export class Tracker {
 
 	// ---------- 0.2.4: sign-off without closing ----------
 
-	/** Records a sign-off and leaves the task in review. Needs an identity (Sheikh's decision 4). */
+	/** Records a sign-off and leaves the task in review. Needs an identity (Sheikh's decision 4) and a recorded move into review (#21). */
 	async signOff(file: TFile): Promise<boolean> {
 		const who = this.plugin.settings.identity.trim();
 		if (!who) {
 			new Notice('Sheiko: set your identity in Sheiko settings to sign off.');
+			return false;
+		}
+		// 0.2.5 (#21): with no recorded move into review, a sign-off could never count, so
+		// none is written. The sign-off window greys the button out; this backs it up.
+		const content = await this.plugin.app.vault.read(file);
+		if (!reviewEntry(parseHistory(content), this.plugin.settings.reviewStatus)) {
+			new Notice(`Sheiko: ${NO_REVIEW_ENTRY_REASON}`);
 			return false;
 		}
 		const now = new Date();

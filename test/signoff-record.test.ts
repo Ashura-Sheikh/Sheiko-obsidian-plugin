@@ -7,11 +7,14 @@ import { FakeVault, resetNotices, runTimers } from './fake-vault';
 import { Notice } from './obsidian-mock';
 import { formatContextLine, parseHistory } from '../src/lifecycle';
 import {
+	NO_IDENTITY_REASON,
+	NO_REVIEW_ENTRY_REASON,
 	NO_SIGNOFF_NOTE,
 	SIGNOFF_PHRASE,
 	WITHDRAW_PHRASE,
 	closeNote,
 	contextEvents,
+	signoffBlocked,
 	signoffState,
 } from '../src/signoff-record';
 
@@ -184,6 +187,69 @@ test('tracker: dry run writes no sign-off, in either form', async () => {
 		assert.equal(await v.plugin.tracker.signOff(v.file(T)), false);
 		assert.equal(v.snapshot().get(T), before, form);
 	}
+});
+
+// ---------- 0.2.5 (#21): "Sign off" off when the sign-off could never count ----------
+
+const blocked = (content: string, identity = 'sheikh') => signoffBlocked(parseHistory(content), REVIEW, identity);
+
+test('#21 blocked: no Status History at all = Sign off off, with the reason', () => {
+	assert.equal(blocked('Task with no history.\n'), NO_REVIEW_ENTRY_REASON);
+});
+
+test('#21 blocked: history that does not end with the move into review = off', () => {
+	assert.equal(blocked(H(['- 2026-10-23T09:00:00+01:00 — open → in-progress'])), NO_REVIEW_ENTRY_REASON);
+	assert.equal(blocked(H([entered, '- 2026-10-23T12:00:00+01:00 — in-review → in-progress'])), NO_REVIEW_ENTRY_REASON);
+});
+
+test('#21 blocked: a live or "detected at startup" move into review = on', () => {
+	assert.equal(blocked(H([entered])), null);
+	const detected = '- 2026-10-23T10:00:00+01:00 — in-progress → in-review (detected at startup — actual change time unknown)';
+	assert.equal(parseHistory(H([detected]))[0]?.kind, 'detected');
+	assert.equal(blocked(H([detected])), null);
+});
+
+test('#21 blocked: no identity still wins, with its own reason (decision 4)', () => {
+	assert.equal(blocked(H([entered]), ''), NO_IDENTITY_REASON);
+	assert.equal(blocked('No history.\n', '  '), NO_IDENTITY_REASON);
+});
+
+test('#21 rule unchanged: sign-off lines already on a task with no history still never count', () => {
+	const s = state('Task.\n' + C([sign('11:00:00'), sign('11:05:00'), sign('11:10:00')]));
+	assert.equal(s.signedOff, false);
+	assert.equal(s.reviewSince, null);
+	assert.equal(closeNote(s), NO_SIGNOFF_NOTE);
+});
+
+test('#21 tracker: Sign off on a task in review with no history writes nothing, in either form, and says why', async () => {
+	for (const form of ['context', 'field'] as const) {
+		resetNotices();
+		const v = new FakeVault({ settings: { reviewStatus: REVIEW, identity: 'sheikh', signoffRecord: form } });
+		v.addTask(T, { status: REVIEW, dateCreated: '2026-09-19T08:00:00+01:00' }); // went to review before Sheiko tracked it
+		await v.start();
+		await v.plugin.tracker.reconcile();
+		assert.equal(v.body(T).includes('## Status History'), false, `${form}: first sight writes no history`);
+		const before = v.snapshot().get(T);
+		assert.equal(await v.plugin.tracker.signOff(v.file(T)), false, form);
+		assert.equal(v.snapshot().get(T), before, `${form}: note unchanged`);
+		assert.match(Notice.messages.join('\n'), /No recorded move into review/, form);
+	}
+});
+
+test('#21 tracker: once the task is moved out of review and back, Sign off works again', async () => {
+	const v = new FakeVault({ settings: { reviewStatus: REVIEW, identity: 'sheikh' } });
+	v.addTask(T, { status: REVIEW, dateCreated: '2026-09-19T08:00:00+01:00' });
+	await v.start();
+	await v.plugin.tracker.reconcile();
+	for (const status of ['in-progress', REVIEW]) {
+		v.edit(T, { status });
+		v.plugin.tracker.onMetadataChanged(v.file(T));
+		await runTimers();
+	}
+	assert.equal(await v.plugin.tracker.signOff(v.file(T)), true);
+	const idx = v.plugin.signoffIndex;
+	await idx.refresh(v.file(T));
+	assert.deepEqual(idx.signed().map((f) => f.path), [T]);
 });
 
 // ---------- the signed-off index (signoff-index.ts), run for real ----------

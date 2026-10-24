@@ -12,6 +12,10 @@
 // sign-off, and it is still in review
 // (no change since that entry). A task with no "entered review" line in its history
 // (e.g. from before Sheiko was installed) is never treated as signed off.
+//
+// 0.2.5 (#21): "Sign off" is off on such a task, with the reason shown (signoffBlocked),
+// so it can't write a sign-off that would never count. The rule itself is unchanged:
+// sign-off lines already written on such a task keep not counting.
 
 import { CONTEXT_HEADING, Transition, parseTimestamp, sectionLines, toLocalIso } from './lifecycle';
 
@@ -78,6 +82,22 @@ export function reviewEntry(history: Transition[], reviewStatus: string): Date |
 	if (!reviewStatus) return null;
 	const last = history[history.length - 1];
 	return last && last.to === reviewStatus ? last.at : null;
+}
+
+/** Why "Sign off" is off: no identity set (decision 4). */
+export const NO_IDENTITY_REASON = 'Set your identity in Sheiko settings to sign off.';
+/** Why "Sign off" is off: the history doesn't end with a move into review (#21). */
+export const NO_REVIEW_ENTRY_REASON =
+	"No recorded move into review, so a sign-off can't count. Use Sign off and close, or move the task out of review and back.";
+
+/**
+ * Why "Sign off" can't record a sign-off that counts on this task, or null when it can.
+ * Uses the same reviewEntry test as signoffState, so the button and the rule always agree.
+ */
+export function signoffBlocked(history: Transition[], reviewStatus: string, identity: string): string | null {
+	if (!identity.trim()) return NO_IDENTITY_REASON;
+	if (!reviewEntry(history, reviewStatus)) return NO_REVIEW_ENTRY_REASON;
+	return null;
 }
 
 /** Identities compare without regard to case or surrounding spaces. */

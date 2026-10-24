@@ -14,6 +14,7 @@ import {
 import { isCardOpen, pruneCardStates, recordCardToggle } from '../signoff-logic';
 import { AgeBand, ageBands, reviewSince } from '../age-bands';
 import { renderPriorityPill } from './pill';
+import { NO_REVIEW_ENTRY_REASON, signoffBlocked } from '../signoff-record';
 import { labelFor } from '../tasknotes';
 
 export type SignoffReason = 'review' | 'cutoff' | 'manual';
@@ -211,10 +212,10 @@ export class SignoffModal extends Modal {
 					this.plugin.signoffChanged(file);
 				}
 			});
-		if (!s.identity.trim()) {
-			// Decision 4: an anonymous sign-off can't be read by anyone, so the button is off.
-			signOff.setDisabled(true).setTooltip('Set your identity in Sheiko settings to sign off.');
-		}
+		// Decision 4: no identity = off (an anonymous sign-off can't be read by anyone).
+		// 0.2.5 (#21): no recorded move into review = off too, since the sign-off could never count.
+		const blocked = signoffBlocked(parseHistory(content), s.reviewStatus, s.identity);
+		if (blocked) signOff.setDisabled(true).setTooltip(blocked);
 		new ButtonComponent(actions)
 			.setButtonText('Sign off and close')
 			.setCta()
@@ -228,6 +229,8 @@ export class SignoffModal extends Modal {
 		// 0.2.4: priority pill, in TaskNotes' own label and colour.
 		renderPriorityPill(meta, cfg, fm[cfg.field.priority]);
 		meta.createSpan({ cls: `sheiko-worker sheiko-worker-${worker.kind}`, text: workerLabel(worker) });
+		// 0.2.5 (#21): say why "Sign off" is off, on the card itself, not only in a tooltip.
+		if (blocked === NO_REVIEW_ENTRY_REASON) card.createDiv({ cls: 'sheiko-muted sheiko-signoff-blocked', text: blocked });
 
 		const details = card.createEl('details', { cls: 'sheiko-card-details' });
 		details.open = isCardOpen(file.path, folded, this.cardStates);
