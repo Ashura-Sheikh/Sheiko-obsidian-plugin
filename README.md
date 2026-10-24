@@ -83,10 +83,10 @@ To find TaskNotes tasks it looks through the vault's Markdown files (Obsidian's 
 
 ### Context log and status history
 
-<!-- Screenshot to add (issue #15): a task note's ## Context and ## Status History sections. -->
-
 - **Context log:** an append-only `## Context` section in each task note. Entries look like `- **{timestamp} — {who}:** {text}`. The `— {who}` part is left out when no identity is set.
 - **Status history:** an append-only `## Status History` section with ISO-timestamped changes. Clicking the same status again isn't logged.
+
+![A task note's Status History: created → open; open → in-progress (auto: timer started); in-progress → in-review (auto: all boxes ticked); in-review → done (signed off by sheikh at 19:34:58)](docs/screenshots/status-history.png)
 
 ### Closure fields
 
@@ -100,13 +100,13 @@ Time is split into working hours, overnight and weekend: `timeWorkingMinutes`, `
 
 ### Lifecycle Summary
 
-<!-- Screenshot to add (issue #15): a task note's ## Lifecycle Summary section. -->
-
 A `## Lifecycle Summary` section (closure plus time per status), refreshed in place. It's written automatically on a live close, or on demand.
 
 - Times under an hour show seconds (`9s`, `6m 28s`); longer ones show `2h 5m`, `1d 3h`. The frontmatter fields stay in whole minutes.
 - For a close Sheiko didn't see live, the time to close and its split are worked out from Created and Completed, and marked as worked out.
 - Missing data shows `—`, never `0m`.
+
+![A task note's Lifecycle Summary, written by Sheiko on a live close: created, completed, closed by, time to close 11m 53s (12 min) split into working 0s, overnight 0s and weekend 11m 53s, recorded by Sheiko (seen live); then time per status: Open 20s, In progress 1m 5s, In Review 10m 29s](docs/screenshots/lifecycle-summary.png)
 
 The lifecycle window (top of this page) shows the same closure and time per status, plus the Context log.
 
@@ -120,11 +120,12 @@ The lifecycle window (top of this page) shows the same closure and time per stat
 
 ### Auto-stage (forward only)
 
-<!-- Screenshot to add (issue #15): a task moved by auto-stage, e.g. its Status History lines. -->
-
 - Starting a TaskNotes timer moves the task to the working status.
 - Ticking the last unticked checkbox moves it to the review status.
 - Moves happen only when something changes, never just because of existing state, and never backwards or out of a completed status.
+- Each automatic move is labelled in Status History: `(auto: timer started)` or `(auto: all boxes ticked)`. The Status History screenshot above shows both.
+
+![The Sign-off needed window opening on its own after the last box was ticked: "This task has moved to review and is waiting for sign-off", one card with Open, Send back to In progress, Sign off and Sign off and close, a Normal priority pill, the label Worker: not recorded, and In progress: 1m 5s · Checklist 4/4](docs/screenshots/auto-stage-signoff.png)
 
 ### The sign-off window
 
