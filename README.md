@@ -8,7 +8,7 @@ An Obsidian plugin that works **alongside [TaskNotes](https://github.com/calluma
 
 *Click the ribbon icon (history clock) on a TaskNotes task to open the lifecycle window. Screenshots are from the developer's test vault: sample task names are test data and may not match the task's current status, and some settings differ from the defaults below.*
 
-**Contents:** [How it fits together](#how-it-fits-together) · [Before you start](#before-you-start-what-sheiko-changes-in-your-vault) · [Getting started](#getting-started) · [Requirements](#requirements) · [Compatibility](#compatibility) · [Lifecycle tracking](#1-lifecycle-tracking) · [Auto-stage and sign-off](#2-auto-stage-and-sign-off) · [Auto-roll](#3-auto-roll) · [Breaks and deep work](#4-breaks-and-deep-work) · [Commands](#commands) · [Settings](#settings) · [Known limits](#known-limits) · [Development](#development)
+**Contents:** [How it fits together](#how-it-fits-together) · [Working with AI agents](#working-with-ai-agents) · [Before you start](#before-you-start-what-sheiko-changes-in-your-vault) · [Getting started](#getting-started) · [Requirements](#requirements) · [Compatibility](#compatibility) · [Lifecycle tracking](#1-lifecycle-tracking) · [Auto-stage and sign-off](#2-auto-stage-and-sign-off) · [Auto-roll](#3-auto-roll) · [Breaks and deep work](#4-breaks-and-deep-work) · [Commands](#commands) · [Settings](#settings) · [Known limits](#known-limits) · [Development](#development)
 
 ## How it fits together
 
@@ -29,6 +29,12 @@ Every step is recorded in the task note: status changes in `## Status History`, 
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Ashura-Sheikh/Sheiko-obsidian-plugin/HEAD/docs/diagrams/feature-map-dark.png">
   <img src="docs/diagrams/feature-map-light.png" alt="Feature map. Sheiko reads TaskNotes' statuses, fields and timer without changing its settings. Two safety switches apply to every feature: Allow writes in this vault, off, and Dry run, off. Feature 1, Lifecycle tracking (context log, status history, closure fields, time per status), has no switch and writes to task notes. Feature 2, Auto-stage and sign-off (forward moves, sign-off window, signed-off list, checklist window), has five switches, all on: Timer start moves task to working; All boxes ticked moves task to review; Prompt for sign-off on review; Prompt for sign-off at the daily cutoff; Show sign-off count in the status bar. It writes to task notes. Feature 3, Auto-roll, has one switch, Roll unfinished tasks at the end of each day, off, and writes to task notes and the daily note's Rolled Over section. Feature 4, Breaks and deep work, has no switch (start a slot yourself or schedule slots per weekday) and writes one report note per day in Sheiko Reports.">
 </picture>
+
+### Working with AI agents
+
+Colours show who acts: orange for AI agents, blue for Sheiko, green for you. The prompt step assumes the default switches and a review status set (see [Getting started](#getting-started), step 4).
+
+<img src="docs/diagrams/ai-agents-dark.png" alt="Diagram of AI agents working alongside Sheiko, with orange for AI agents, blue for Sheiko and green for you. AI Agent 1 works on a task: it edits the note, adds Context lines and ticks boxes. Every status change it makes is logged in Status History, at the real time if Obsidian is open, or as detected at startup if it was closed. When it ticks the last box, Sheiko moves the task to review (only for changes seen while Obsidian is open) and opens the sign-off window, where the card shows the AI agent badge from the worker field and your AI agent names. Sheiko prompts you: you review the card and the checklist window, where the agent's Pre-Handoff Checklist is view-only as a protected section. You then Send back, which returns the task to in progress for the agent, or Sign off (it stays in review, marked signed off) or Sign off and close (done). AI Agent 2 types a sign-off line into Context under its own name: Sheiko ignores it, because only sign-offs under your name count. When AI Agent 2 closes a task itself, Sheiko keeps the close and never overwrites it, and the history notes no sign-off recorded unless you signed off first.">
 
 The diagrams' Mermaid source is in [`docs/diagrams/`](docs/diagrams/).
 

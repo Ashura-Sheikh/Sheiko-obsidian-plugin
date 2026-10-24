@@ -1,0 +1,50 @@
+---
+config:
+  flowchart:
+    wrappingWidth: 360
+  themeVariables:
+    edgeLabelBackground: '#0d1117'
+---
+flowchart TD
+    subgraph agents["AI agents"]
+        direction TB
+        a1["AI Agent 1<br/>works on a task: edits the note,<br/>adds Context lines, ticks boxes"]
+        a2["AI Agent 2<br/>types a sign-off line into Context<br/>under its own name"]
+        a3["AI Agent 2<br/>closes a task itself"]
+    end
+    subgraph sheiko["Sheiko, automatic"]
+        direction TB
+        s1["Logs every status change in Status History<br/>Obsidian open: the real time<br/>Obsidian closed: 'detected at startup'"]
+        s2["Last box ticked: task moves to review<br/>only for changes seen while Obsidian is open"]
+        s3["Sign-off window opens<br/>card shows the 'AI agent' badge,<br/>from the worker field and your AI agent names"]
+        s4["Ignored: a sign-off under<br/>any name but yours"]
+        s5["The agent's close is kept, never overwritten<br/>history notes '(no sign-off recorded)'<br/>unless you signed off first"]
+    end
+    subgraph you["You"]
+        direction TB
+        y1["Review the card and the checklist window<br/>the agent's Pre-Handoff Checklist is<br/>view-only there (protected section)"]
+        y2["Sign off: stays in review, marked signed off<br/>Sign off and close: done"]
+        y3["Send back"]
+    end
+    a1 -->|"every status change"| s1
+    a1 -->|"ticks the last box"| s2
+    a2 -->|"tries to sign off"| s4
+    a3 -->|"closes without your sign-off"| s5
+    s2 --> s3
+    s3 -->|"prompts you"| y1
+    y1 --> y2
+    y1 --> y3
+    y3 -->|"back to in progress"| a1
+
+    classDef agent fill:#2d1a08,stroke:#f0883e,color:#ffa657,stroke-width:2px
+    classDef plugin fill:#0b2238,stroke:#58a6ff,color:#79c0ff,stroke-width:2px
+    classDef human fill:#0d2a17,stroke:#3fb950,color:#7ee787,stroke-width:2px
+    class a1,a2,a3 agent
+    class s1,s2,s3,s4,s5 plugin
+    class y1,y2,y3 human
+    style agents fill:#161b22,stroke:#f0883e,color:#ffa657
+    style sheiko fill:#161b22,stroke:#58a6ff,color:#79c0ff
+    style you fill:#161b22,stroke:#3fb950,color:#7ee787
+    linkStyle 0,1,2,3 stroke:#f0883e,stroke-width:2px,color:#ffa657
+    linkStyle 4,5 stroke:#58a6ff,stroke-width:2px,color:#79c0ff
+    linkStyle 6,7,8 stroke:#3fb950,stroke-width:2px,color:#7ee787
