@@ -32,7 +32,7 @@ flowchart TD
     a1 -->|"ticks the last box,<br/>or sets status to review"| s2
     a2 --> s2
     a3 --> s2
-    agents -.->|"every status change"| s1
+    agents -.->|"every status change,<br/>from any agent"| s1
     ax -->|"tries to sign off"| s4
     ay -->|"closes without your sign-off"| s5
     s2 --> s3

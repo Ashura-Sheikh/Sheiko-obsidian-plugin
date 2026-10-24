@@ -302,7 +302,7 @@ Statuses and field names are read from TaskNotes' settings rather than hardcoded
 **Tracking**
 
 - A task first seen by Sheiko has no earlier history. It's tracked from then on, with nothing backfilled.
-- If a close written by an agent or by hand is reopened and then closed again live, the original `closedBy` / `timeToCloseMinutes` are kept, so they can be stale.
+- If a close written by an agent or by hand is reopened and then closed again live, the original `closedBy` / `timeToCloseMinutes` are kept, so they can be stale. This applies only if Sheiko didn't mark the note `closureSource: sheiko`; see the next point.
 - **A close Sheiko didn't make** (for example, an agent setting a task to done while Obsidian is open) gets its blank closure fields filled, including `closedBy` = your identity. Then, if the task is reopened, all its closure fields are cleared, including the agent's own `completedDate` and `closedBy`. Tracked in [#19](https://github.com/Ashura-Sheikh/Sheiko-obsidian-plugin/issues/19).
 - If a task's only recorded status change is the close itself, the Lifecycle Summary's *Time per status* table has no rows.
 - Sheiko waits 600 ms after a change so TaskNotes can finish its own writes. That delay is a timing assumption.
