@@ -311,6 +311,7 @@ Statuses and field names are read from TaskNotes' settings rather than hardcoded
 
 **Sign-off**
 
+- **A task with no recorded move into review** can't be signed off without closing. This includes a task that went to review before Sheiko tracked it, so it has no `## Status History`. *Sign off* still writes its line, but it never counts: the task stays in the sign-off window, and a later close is noted `(no sign-off recorded)`. Use *Sign off and close*, or move the task out of review and back. A fix that greys out *Sign off* in this case is tracked in [#21](https://github.com/Ashura-Sheikh/Sheiko-obsidian-plugin/issues/21).
 - **Closing a task from TaskNotes itself** (the status pill, a board drag) is recorded as `(no sign-off recorded)` unless *Sign off* was used first, even when you close it yourself. Sheiko can't tell who changed the status. *Sign off and close* records it as signed off.
 - **Changing your identity** means sign-offs made under the old one no longer count.
 - **Free-text sign-offs aren't read.** A Context entry such as "Reviewed - signing off" doesn't count; only *Sign off*'s fixed record does. Sign-offs typed before 0.2.4 aren't recognised.
