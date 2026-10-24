@@ -182,7 +182,7 @@ Each task has *Open*, *Withdraw sign-off* (adds a withdrawal line to Context; if
 
 <p>
   <img src="docs/screenshots/signed-off-list.png" alt="Signed off, waiting to close: two tasks, each with a priority pill, who signed off and when, and Open, Withdraw sign-off and Close now" width="49%">
-  <img src="docs/screenshots/status-bar-signed-off.png" alt="The status-bar item: ✓ 2 signed off" width="49%">
+  <img src="docs/screenshots/status-bar-counts.png" alt="The status bar: ⭐ 3 awaiting sign-off, ✓ 2 signed off, and the 🎧 slot item" width="49%">
 </p>
 
 ### Checklist window (0.2.4)
@@ -195,6 +195,8 @@ Each task has *Open*, *Withdraw sign-off* (adds a withdrawal line to Context; if
 - **Ticks here never move the task.** Ticking the last box from the window doesn't trigger the move to review.
 - **Protected sections are view-only:** any heading containing *Pre-Handoff Checklist*, *Necessity check* or *sign-off* (and its sub-headings). Those boxes are someone else's record, such as a self-check or a gate, so they're ticked in the note itself. The list is a setting.
 - The window is also view-only with no identity set, writes not allowed in the vault, or dry run on.
+
+<img src="docs/screenshots/checklist-protected.png" alt="The checklist pop-out on a test task: an ordinary Steps section with one box ticked and Add note; Pre-Handoff Checklist, its sub-part, Necessity check and project-manager sign-off sections marked with a lock as view-only; an Outcome section between them stays tickable" width="600">
 
 ![The checklist pop-out with Add note open under a ticked box: a text box, Cancel and Add note](docs/screenshots/checklist-add-note.png)
 
@@ -306,8 +308,7 @@ Statuses and field names are read from TaskNotes' settings rather than hardcoded
 - **TaskNotes** installed and enabled (tested on 4.13.4)
 - Obsidian's Daily Notes settings (folder and date format) are used for the Rolled Over summary
 
-<!-- Screenshot to refresh (issue #15): installed-plugins.png still shows v0.2.3. -->
-![Installed plugins: Sheiko Task Lifecycle v0.2.3 by Sheikh M Sahil, enabled](docs/screenshots/installed-plugins.png)
+![Installed plugins: Sheiko Task Lifecycle v0.2.4 by Sheikh M Sahil, enabled](docs/screenshots/installed-plugins.png)
 
 ## Compatibility
 
