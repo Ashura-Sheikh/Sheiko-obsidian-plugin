@@ -125,7 +125,7 @@ The lifecycle window (top of this page) shows the same closure and time per stat
 - Moves happen only when something changes, never just because of existing state, and never backwards or out of a completed status.
 - Each automatic move is labelled in Status History: `(auto: timer started)` or `(auto: all boxes ticked)`. The Status History screenshot above shows both.
 
-![The Sign-off needed window opening on its own after the last box was ticked: "This task has moved to review and is waiting for sign-off", one card with Open, Send back to In progress, Sign off and Sign off and close, a Normal priority pill, the worker badge, and In progress: 1m 5s · Checklist 4/4](docs/screenshots/auto-stage-signoff.png)
+![The Sign-off needed window opening on its own after the last box was ticked: "This task has moved to review and is waiting for sign-off", one card with Open, Send back to In progress, Sign off and Sign off and close, a Normal priority pill, the label Worker: not recorded, and In progress: 1m 5s · Checklist 4/4](docs/screenshots/auto-stage-signoff.png)
 
 ### The sign-off window
 
